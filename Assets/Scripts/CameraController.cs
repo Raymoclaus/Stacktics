@@ -4,6 +4,8 @@ using UnityEngine;
 
 public class CameraController : MonoBehaviour
 {
+	/* Fields */
+	#region
 	//reference to the camera component
 	private Camera cam;
 
@@ -30,12 +32,17 @@ public class CameraController : MonoBehaviour
 	public Transform target;
 
 	//orthographic scrolling
+	public enum ScrollMode { EdgeScroll, DragScroll, InputScroll }
+	public ScrollMode scrollMode;
 	public float orthoScrollPadding, orthoScrollLimit;
 	public Vector2 orthoZoomLimits;
 	public bool smoothZooming;
 	private float zoomTo, zoomCount = 0f, zoomTime = 1f;
 	public Vector3 orthographicCenter = new Vector3(0f, 45f, 0f);
-
+	private Vector2 prevMouseHoldPos;
+	private float dragDistance, dragTime;
+	public bool Dragging { get { return dragDistance > 20f || dragTime > 1f; } }
+	#endregion
 
 	void Start()
 	{
@@ -46,8 +53,16 @@ public class CameraController : MonoBehaviour
 		zoomTo = cam.orthographicSize;
 	}
 
+	private void EarlyUpdate()
+	{
+		
+	}
+
 	void Update()
 	{
+		//Update certain variables before everything else to be used in various contexts
+		EarlyUpdate();
+
 		//only run update method if not in the middle of a transition
 		if (CheckTransition())
 		{
@@ -72,6 +87,21 @@ public class CameraController : MonoBehaviour
 				break;
 			}
 		}
+
+		//Update certain variables after everything else to be used in various contexts
+		LateUpdate();
+  	}
+
+	private void LateUpdate()
+	{
+		if (Input.GetMouseButton(0))
+		{
+			prevMouseHoldPos = Input.mousePosition;
+		}
+		else
+		{
+			prevMouseHoldPos = Vector2.zero;
+		}
 	}
 
 	private bool CheckTransition()
@@ -91,51 +121,137 @@ public class CameraController : MonoBehaviour
 		return false;
 	}
 
+	/* Orthographic Updates */
+	#region
 	private void UpdateOrthographic()
 	{
 		CheckOrthographicScrolling();
 		CheckOrthographicZooming();
 	}
 
+	/* Scroll Input related */
+	#region
+	//Based on the current scroll mode, check certain kinds of input
 	private void CheckOrthographicScrolling()
 	{
-		Vector2 mousePos = Input.mousePosition;
-		Vector3 direction = Vector3.zero;
-		/* if the cursor is near the edges of the screen then scroll camera in that direction */
-		//check left side of the screen
-		if (mousePos.x < orthoScrollPadding)
+		switch (scrollMode)
 		{
-			direction.x += -1f;
-			direction.z += 1f;
+		case ScrollMode.EdgeScroll:
+			{
+				CheckEdgeScrollInput();
+				break;
+			}
+		case ScrollMode.DragScroll:
+			{
+				CheckDragScrollInput();
+				break;
+			}
+		case ScrollMode.InputScroll:
+			{
+				CheckInputScrollInput();
+				break;
+			}
+		}
+	}
+
+	public void CheckEdgeScrollInput()
+	{
+		//check left side of the screen
+		if (Input.mousePosition.x < orthoScrollPadding)
+		{
+			Scroll(270f, 1f);
 		}
 		//check right side of the screen
-		if (mousePos.x > Screen.width - orthoScrollPadding)
+		if (Input.mousePosition.x > Screen.width - orthoScrollPadding)
 		{
-			direction.x += 1f;
-			direction.z += -1f;
+			Scroll(90f, 1f);
 		}
 		//check top side of the screen
-		if (mousePos.y > Screen.height - orthoScrollPadding)
+		if (Input.mousePosition.y > Screen.height - orthoScrollPadding)
 		{
-			direction.x += 1f;
-			direction.z += 1f;
+			Scroll(0f, 1f);
 		}
 		//check bottom side of the screen
-		if (mousePos.y < orthoScrollPadding)
+		if (Input.mousePosition.y < orthoScrollPadding)
 		{
-			direction.x += -1f;
-			direction.z += -1f;
+			Scroll(180f, 1f);
 		}
-		//apply direction to camera's position
-		direction.Normalize();
-		transform.position += direction * cam.orthographicSize / 30f;
+	}
+
+	public void CheckDragScrollInput()
+	{
+		float dragDistanceThisFrame = 0f;
+		if (Input.GetMouseButton(0))
+		{
+			if (prevMouseHoldPos != Vector2.zero)
+			{
+				dragDistanceThisFrame = Vector3.Distance(Input.mousePosition, prevMouseHoldPos);
+				dragDistance += dragDistanceThisFrame;
+				dragTime += Time.deltaTime;
+			}
+		}
+		else
+		{
+			dragDistance = 0;
+			dragTime = 0;
+		}
+
+		if (Dragging)
+		{
+			float angle = Vector2.Angle(Vector2.up, (Vector2)Input.mousePosition - prevMouseHoldPos + Vector2.up);
+			//alter to 360 degree rotation
+			if (Input.mousePosition.x < prevMouseHoldPos.x)
+			{
+				angle = 180f + (180f - angle);
+			}
+			Scroll(angle + 180f, dragDistanceThisFrame / 18f);
+		}
+	}
+
+	public void CheckInputScrollInput()
+	{
+		//check left key
+		if (Input.GetKey(KeyCode.LeftArrow))
+		{
+			Scroll(270f, 1f);
+		}
+		//check right key
+		if (Input.GetKey(KeyCode.RightArrow))
+		{
+			Scroll(90f, 1f);
+		}
+		//check up key
+		if (Input.GetKey(KeyCode.UpArrow))
+		{
+			Scroll(0f, 1f);
+		}
+		//check down key
+		if (Input.GetKey(KeyCode.DownArrow))
+		{
+			Scroll(180f, 1f);
+		}
+	}
+
+	//moves the camera in a given direction altered by the camera's rotation
+	private void Scroll(float angle, float speed)
+	{
+		angle += transform.eulerAngles.y;
+		//determine direction to scroll in
+		Vector3 scroll = new Vector3(Mathf.Sin(Mathf.Deg2Rad * (angle)), 0f,  Mathf.Cos(Mathf.Deg2Rad * (angle)));
+		scroll.Normalize();
+		scroll *= speed;
+		//apply direction
+		transform.position += (Vector3)scroll * cam.orthographicSize / 30F;
 		//check to see if camera has reached scroll limit
 		while (Vector3.Distance(orthographicCenter, transform.position) > orthoScrollLimit)
 		{
 			transform.position = Vector3.MoveTowards(transform.position, orthographicCenter, 0.1f);
 		}
 	}
+	#endregion
 
+	/* Zoom Input related */
+	#region
 	private void CheckOrthographicZooming()
 	{
 		//check to see if the mouse wheel is being used
@@ -164,17 +280,26 @@ public class CameraController : MonoBehaviour
 			cam.orthographicSize = zoomTo;
 		}
 	}
+	#endregion
+	#endregion
 
+	/* Locked Perspective Updates */
+	#region
 	private void UpdateLocked()
 	{
 		
 	}
+	#endregion
 
+	/* Free Perspective Updates */
+	#region
 	private void UpdateFree()
 	{
 		
 	}
+	#endregion
 
+	//changes the camera mode
 	public void SetMode(CameraMode mode)
 	{
 		camMode = mode;
@@ -198,26 +323,27 @@ public class CameraController : MonoBehaviour
 		}
 	}
 
+	/* Transition Effect */
+	#region
 	private IEnumerator FadeOut()
 	{
+		float halfway = (nearFarClippingLimits.x + nearFarClippingLimits.y) / 2f;
 		//start fading out
 		fadingOut = true;
+		fadeCounter = 0;
 		//loop until the clipping planes match after a certain amount of time
 		while (fadeCounter < fadeTime / 2f)
 		{
 			//increment counter
 			fadeCounter += Time.deltaTime;
 			//adjust camera's far clip plane
-			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, nearFarClippingLimits.x * 1.01f, fadeCounter / (fadeTime / 2f));
+			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, halfway, fadeCounter / (fadeTime / 2f));
+			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, halfway + 0.01f, fadeCounter / (fadeTime / 2f));
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
 		//reset counter, change camera mode and start fading back in
-		fadeCounter = 0;
-		fadingIn = true;
 		fadingOut = false;
-		StartCoroutine(FadeIn());
-		//check which mode to set to
 		if (cam.orthographic)
 		{
 			if (target != null)
@@ -233,22 +359,27 @@ public class CameraController : MonoBehaviour
 		{
 			SetMode(CameraMode.Orthographic);
 		}
+		StartCoroutine(FadeIn());
 	}
 
 	private IEnumerator FadeIn()
 	{
+		//start fading in
+		fadingIn = true;
+		fadeCounter = 0;
 		//loop until the clipping planes match after a certain amount of time
 		while (fadeCounter < fadeTime / 2f)
 		{
 			//increment counter
 			fadeCounter += Time.deltaTime;
 			//adjust camera's far clip plane
+			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, nearFarClippingLimits.x, fadeCounter / (fadeTime / 2f));
 			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, nearFarClippingLimits.y, fadeCounter / (fadeTime / 2f));
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
 		//reset counter and start fading back in
-		fadeCounter = 0;
 		fadingIn = false;
 	}
+	#endregion
 }
