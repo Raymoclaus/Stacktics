@@ -6,8 +6,9 @@ public class CameraController : MonoBehaviour
 {
 	/* Fields */
 	#region
-	//reference to the camera component
-	private Camera cam;
+	//reference to components and external objects
+	public Camera cam;
+	public Transform target;
 
 	//Define camera modes
 	public enum CameraMode {Orthographic, LockedPerspective, FreePerspective};
@@ -28,20 +29,25 @@ public class CameraController : MonoBehaviour
 	private float fadeCounter = 0f;
 	private Vector2 nearFarClippingLimits = new Vector2();
 
-	//reference to camera target
-	public Transform target;
-
 	//orthographic scrolling
 	public enum ScrollMode { EdgeScroll, DragScroll, InputScroll }
 	public ScrollMode scrollMode;
 	public float orthoScrollPadding, orthoScrollLimit;
 	public Vector2 orthoZoomLimits;
+	public float zoomSpeed;
 	public bool smoothZooming;
 	private float zoomTo, zoomCount = 0f, zoomTime = 1f;
 	public Vector3 orthographicCenter = new Vector3(0f, 45f, 0f);
-	private Vector2 prevMouseHoldPos;
-	private float dragDistance, dragTime;
-	public bool Dragging { get { return dragDistance > 20f || dragTime > 1f; } }
+	public Vector3 CameraCenter
+	{
+		get
+		{
+			return orthographicCenter - transform.forward * nearFarClippingLimits.y / 2f;
+		}
+	}
+	private Vector3 prevMouseHoldPos, dragOrigin, cameraDragOrigin;
+	private float dragDistance, dragTime, dragSpeed = 100f;
+	public bool Dragging { get { return dragDistance > 0.05f || dragTime > 1f; } }
 	#endregion
 
 	void Start()
@@ -55,7 +61,17 @@ public class CameraController : MonoBehaviour
 
 	private void EarlyUpdate()
 	{
-		
+		if (Input.GetMouseButtonDown(0))
+		{
+			dragOrigin = Input.mousePosition;
+			cameraDragOrigin = transform.position;
+		}
+		if (Input.GetMouseButtonUp(0))
+		{
+			dragDistance = 0;
+			dragTime = 0;
+			prevMouseHoldPos = Vector3.zero;
+		}
 	}
 
 	void Update()
@@ -97,10 +113,6 @@ public class CameraController : MonoBehaviour
 		if (Input.GetMouseButton(0))
 		{
 			prevMouseHoldPos = Input.mousePosition;
-		}
-		else
-		{
-			prevMouseHoldPos = Vector2.zero;
 		}
 	}
 
@@ -180,31 +192,23 @@ public class CameraController : MonoBehaviour
 
 	public void CheckDragScrollInput()
 	{
-		float dragDistanceThisFrame = 0f;
 		if (Input.GetMouseButton(0))
 		{
-			if (prevMouseHoldPos != Vector2.zero)
-			{
-				dragDistanceThisFrame = Vector3.Distance(Input.mousePosition, prevMouseHoldPos);
-				dragDistance += dragDistanceThisFrame;
-				dragTime += Time.deltaTime;
-			}
-		}
-		else
-		{
-			dragDistance = 0;
-			dragTime = 0;
+			dragDistance += Vector3.Distance(
+				cam.ScreenToViewportPoint(Input.mousePosition), cam.ScreenToViewportPoint(prevMouseHoldPos));
+			dragTime += Time.deltaTime;
 		}
 
 		if (Dragging)
 		{
-			float angle = Vector2.Angle(Vector2.up, (Vector2)Input.mousePosition - prevMouseHoldPos + Vector2.up);
+			float angle = Vector3.Angle(Vector3.up, Input.mousePosition - dragOrigin + Vector3.up);
 			//alter to 360 degree rotation
-			if (Input.mousePosition.x < prevMouseHoldPos.x)
+			if (Input.mousePosition.x < dragOrigin.x)
 			{
 				angle = 180f + (180f - angle);
 			}
-			Scroll(angle + 180f, dragDistanceThisFrame / 18f);
+			transform.position = cameraDragOrigin;
+			Scroll(angle + 180f, dragSpeed * Vector3.Distance(cam.ScreenToViewportPoint(Input.mousePosition), cam.ScreenToViewportPoint(dragOrigin)));
 		}
 	}
 
@@ -243,10 +247,16 @@ public class CameraController : MonoBehaviour
 		//apply direction
 		transform.position += (Vector3)scroll * cam.orthographicSize / 30F;
 		//check to see if camera has reached scroll limit
-		while (Vector3.Distance(orthographicCenter, transform.position) > orthoScrollLimit)
+		Vector3 pos = transform.position;
+		if (Mathf.Abs(pos.x - CameraCenter.x) > orthoScrollLimit && pos.x != 0)
 		{
-			transform.position = Vector3.MoveTowards(transform.position, orthographicCenter, 0.1f);
+			pos.x = CameraCenter.x + orthoScrollLimit * Mathf.Abs(pos.x) / pos.x;
 		}
+		if (Mathf.Abs(pos.z - CameraCenter.z) > orthoScrollLimit && pos.z != 0)
+		{
+			pos.z = CameraCenter.z + orthoScrollLimit * Mathf.Abs(pos.z) / pos.z;
+		}
+		transform.position = pos;
 	}
 	#endregion
 
@@ -261,10 +271,10 @@ public class CameraController : MonoBehaviour
 			//reset zoom Count to allow for smooth scrolling
 			zoomCount = 0;
 			//only apply the scroll if the zoom would remain within limits
-			if (zoomTo + mouseScroll >= orthoZoomLimits.x &&
-				zoomTo + mouseScroll <= orthoZoomLimits.y)
+			if (zoomTo + mouseScroll * zoomSpeed >= orthoZoomLimits.x &&
+				zoomTo + mouseScroll * zoomSpeed <= orthoZoomLimits.y)
 			{
-				zoomTo += mouseScroll;
+				zoomTo += mouseScroll * zoomSpeed;
 			}
 		}
 		//increment zoom counter for smooth scrolling
@@ -321,6 +331,8 @@ public class CameraController : MonoBehaviour
 				break;
 			}
 		}
+
+		transform.position = orthographicCenter + transform.forward * -nearFarClippingLimits.y / 2f;
 	}
 
 	/* Transition Effect */

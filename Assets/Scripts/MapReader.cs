@@ -7,6 +7,8 @@ public class MapReader : MonoBehaviour
 {
 	/* Variable Declaration */
 	#region
+	//reference to camera controller
+	public CameraController camCtrl;
 	//reference to land tile
 	public Transform landTile;
 	//nested list of coordinates to place tiles. Each Vector2 determines vertical size and vertical offset
@@ -20,22 +22,28 @@ public class MapReader : MonoBehaviour
 	public Vector3 Center { get { return new Vector3(coords[0].Count / 2f * tileSize.x, 0f, coords[0][0].Count / 2f * tileSize.z); } }
 	#endregion
 
-
 	void Start()
 	{
 		//get the size of the tile prefab
 		tileSize = landTile.localScale;
 		//if no coordinates are provided create a basic default map of coordinates
-		CreateDefaultCoordinates ();
+//		CreateDefaultMatrix ();
+		CreateRandomMatrix();
+		//set the center position of the camera
+		if (camCtrl != null)
+		{
+			camCtrl.orthographicCenter = Center;
+			camCtrl.SetMode(CameraController.CameraMode.Orthographic);
+		}
 		//once the coords have been filled out, instantiate copies of the landTile at each coordinate
 		CreateLandTiles();
 	}
 
 	/* This creates a flat 10x10 plane of coordinates with 1 floor */
-	private void CreateDefaultCoordinates()
+	private void CreateDefaultMatrix()
 	{
 		//some arbitrary values for creating a default level
-		int levels = 2, width = 10, length = 10;
+		int levels = 1, width = 10, length = 10;
 		//default vertical size of 1 and vertical offset of 0
 		Vector2 defaultProperties = Vector2.right;
 
@@ -48,6 +56,25 @@ public class MapReader : MonoBehaviour
 				for (int k = 0; k < length; k++)
 				{
 					coords[i][j].Add(defaultProperties);
+				}
+			}
+		}
+	}
+
+	private void CreateRandomMatrix()
+	{
+		//some arbitrary values for creating a default level
+		int levels = 1, width = Random.Range(8, 20), length = Random.Range(8, 20);
+
+		for (int i = 0; i < levels; i++)
+		{
+			coords.Add(new List<List<Vector2>>());
+			for (int j = 0; j < width; j++)
+			{
+				coords[i].Add(new List<Vector2>());
+				for (int k = 0; k < length; k++)
+				{
+					coords[i][j].Add(new Vector2(Random.Range(1, 5), Random.Range(0, 5)));
 				}
 			}
 		}
@@ -75,6 +102,8 @@ public class MapReader : MonoBehaviour
 						j * individualSize.x + individualSize.x,
 						individualSize.y / 2f + verticalOffset,
 						k * individualSize.z + individualSize.z);
+					//set the scale
+					newTile.localScale = individualSize;
 					//store new tile in the tiles nested list
 					tiles[i][j].Add(newTile);
 				}
