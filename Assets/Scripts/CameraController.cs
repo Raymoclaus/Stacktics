@@ -20,29 +20,29 @@ public class CameraController : MonoBehaviour
 	}
 
 	//transition-related stuff
-	private bool IsTransitioning
-	{
-		get { return fadingIn || fadingOut; }
-	}
-	private bool fadingOut, fadingIn;
+	private bool transitioning;
 	public float fadeTime;
 	private float fadeCounter = 0f;
 	private Vector2 nearFarClippingLimits = new Vector2();
 
 	//orthographic scrolling
-	public enum ScrollMode { EdgeScroll, DragScroll, InputScroll }
+	public enum ScrollMode { EdgeScroll, DragScroll }
 	public ScrollMode scrollMode;
 	public float orthoScrollPadding, orthoScrollLimit;
 	public Vector2 orthoZoomLimits;
 	public float zoomSpeed;
 	public bool smoothZooming;
 	private float zoomTo, zoomCount = 0f, zoomTime = 1f;
-	public Vector3 orthographicCenter = new Vector3(0f, 45f, 0f);
+	public Vector3 orthoCenter = new Vector3(0f, 45f, 0f);
+	public Vector3 orthoRotation = new Vector3(30f, 45f, 0f);
+	private Vector3 currentRotation;
+	public float rotationTime;
+	private float rotationCount = 0f;
 	public Vector3 CameraCenter
 	{
 		get
 		{
-			return orthographicCenter - transform.forward * nearFarClippingLimits.y / 2f;
+			return orthoCenter - transform.forward * nearFarClippingLimits.y / 2f;
 		}
 	}
 	private Vector3 prevMouseHoldPos, dragOrigin, cameraDragOrigin;
@@ -57,6 +57,7 @@ public class CameraController : MonoBehaviour
 		nearFarClippingLimits.x = cam.nearClipPlane;
 		nearFarClippingLimits.y = cam.farClipPlane;
 		zoomTo = cam.orthographicSize;
+		currentRotation = orthoRotation;
 	}
 
 	private void EarlyUpdate()
@@ -119,7 +120,7 @@ public class CameraController : MonoBehaviour
 	private bool CheckTransition()
 	{
 		//if already in a transition then return true
-		if (IsTransitioning)
+		if (transitioning)
 		{
 			return true;
 		}
@@ -127,6 +128,8 @@ public class CameraController : MonoBehaviour
 		if (Input.GetKeyDown(KeyCode.Space))
 		{
 			StartCoroutine(FadeOut());
+			rotationCount = rotationTime;
+			zoomCount = zoomTime;
 			return true;
 		}
 		//otherwise return false
@@ -139,6 +142,7 @@ public class CameraController : MonoBehaviour
 	{
 		CheckOrthographicScrolling();
 		CheckOrthographicZooming();
+		CheckOrthographicRotating();
 	}
 
 	/* Scroll Input related */
@@ -156,11 +160,6 @@ public class CameraController : MonoBehaviour
 		case ScrollMode.DragScroll:
 			{
 				CheckDragScrollInput();
-				break;
-			}
-		case ScrollMode.InputScroll:
-			{
-				CheckInputScrollInput();
 				break;
 			}
 		}
@@ -212,30 +211,6 @@ public class CameraController : MonoBehaviour
 		}
 	}
 
-	public void CheckInputScrollInput()
-	{
-		//check left key
-		if (Input.GetKey(KeyCode.LeftArrow))
-		{
-			Scroll(270f, 1f);
-		}
-		//check right key
-		if (Input.GetKey(KeyCode.RightArrow))
-		{
-			Scroll(90f, 1f);
-		}
-		//check up key
-		if (Input.GetKey(KeyCode.UpArrow))
-		{
-			Scroll(0f, 1f);
-		}
-		//check down key
-		if (Input.GetKey(KeyCode.DownArrow))
-		{
-			Scroll(180f, 1f);
-		}
-	}
-
 	//moves the camera in a given direction altered by the camera's rotation
 	private void Scroll(float angle, float speed)
 	{
@@ -270,11 +245,16 @@ public class CameraController : MonoBehaviour
 		{
 			//reset zoom Count to allow for smooth scrolling
 			zoomCount = 0;
-			//only apply the scroll if the zoom would remain within limits
-			if (zoomTo + mouseScroll * zoomSpeed >= orthoZoomLimits.x &&
-				zoomTo + mouseScroll * zoomSpeed <= orthoZoomLimits.y)
+			//apply zoom
+			zoomTo += mouseScroll * zoomSpeed;
+			//if zoom surpassed the limits then bring it back in line
+			if (zoomTo < orthoZoomLimits.x)
 			{
-				zoomTo += mouseScroll * zoomSpeed;
+				zoomTo = orthoZoomLimits.x;
+			}
+			if (zoomTo > orthoZoomLimits.y)
+			{
+				zoomTo = orthoZoomLimits.y;
 			}
 		}
 		//increment zoom counter for smooth scrolling
@@ -288,6 +268,45 @@ public class CameraController : MonoBehaviour
 		else
 		{
 			cam.orthographicSize = zoomTo;
+		}
+	}
+	#endregion
+
+	/* Rotation Input related */
+	#region
+	private void CheckOrthographicRotating()
+	{
+		//increment counter
+		rotationCount += Time.deltaTime;
+		//check input
+		if (Input.GetKeyDown(KeyCode.LeftArrow))
+		{
+			orthoRotation.y += 90f;
+			rotationCount = 0f;
+		}
+		if (Input.GetKeyDown(KeyCode.RightArrow))
+		{
+			orthoRotation.y -= 90f;
+			rotationCount = 0f;
+		}
+		//apply rotation and readjust position to always look at center after rotating
+		if (transform.eulerAngles != orthoRotation)
+		{
+			currentRotation.y = Mathf.Lerp(currentRotation.y, orthoRotation.y, rotationCount / rotationTime);
+			if (currentRotation.y < -135f)
+			{
+				currentRotation.y += 360f;
+				orthoRotation.y += 360f;
+				transform.eulerAngles += Vector3.up * 360F;
+			}
+			if (currentRotation.y >= 225f)
+			{
+				currentRotation.y -= 360f;
+				orthoRotation.y -= 360f;
+				transform.eulerAngles -= Vector3.up * 360F;
+			}
+			transform.eulerAngles = currentRotation;
+			transform.position = CameraCenter;
 		}
 	}
 	#endregion
@@ -332,7 +351,8 @@ public class CameraController : MonoBehaviour
 			}
 		}
 
-		transform.position = orthographicCenter + transform.forward * -nearFarClippingLimits.y / 2f;
+		transform.eulerAngles = orthoRotation;
+		transform.position = CameraCenter;
 	}
 
 	/* Transition Effect */
@@ -341,21 +361,20 @@ public class CameraController : MonoBehaviour
 	{
 		float halfway = (nearFarClippingLimits.x + nearFarClippingLimits.y) / 2f;
 		//start fading out
-		fadingOut = true;
+		transitioning = true;
 		fadeCounter = 0;
 		//loop until the clipping planes match after a certain amount of time
-		while (fadeCounter < fadeTime / 2f)
+		while (fadeCounter < fadeTime * 0.45f)
 		{
 			//increment counter
 			fadeCounter += Time.deltaTime;
 			//adjust camera's far clip plane
-			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, halfway, fadeCounter / (fadeTime / 2f));
-			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, halfway + 0.01f, fadeCounter / (fadeTime / 2f));
+			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, halfway, fadeCounter / (fadeTime * 0.45f));
+			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, halfway + 0.001f, fadeCounter / (fadeTime * 0.45f));
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
 		//reset counter, change camera mode and start fading back in
-		fadingOut = false;
 		if (cam.orthographic)
 		{
 			if (target != null)
@@ -371,27 +390,33 @@ public class CameraController : MonoBehaviour
 		{
 			SetMode(CameraMode.Orthographic);
 		}
+
+		while (fadeCounter < fadeTime * 0.55f)
+		{
+			fadeCounter += Time.deltaTime;
+			yield return 0;
+		}
+
 		StartCoroutine(FadeIn());
 	}
 
 	private IEnumerator FadeIn()
 	{
 		//start fading in
-		fadingIn = true;
 		fadeCounter = 0;
 		//loop until the clipping planes match after a certain amount of time
-		while (fadeCounter < fadeTime / 2f)
+		while (fadeCounter < fadeTime * 0.45f)
 		{
 			//increment counter
 			fadeCounter += Time.deltaTime;
 			//adjust camera's far clip plane
-			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, nearFarClippingLimits.x, fadeCounter / (fadeTime / 2f));
-			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, nearFarClippingLimits.y, fadeCounter / (fadeTime / 2f));
+			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, nearFarClippingLimits.x, fadeCounter / (fadeTime * 0.45f));
+			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, nearFarClippingLimits.y, fadeCounter / (fadeTime * 0.45f));
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
 		//reset counter and start fading back in
-		fadingIn = false;
+		transitioning = false;
 	}
 	#endregion
 }
