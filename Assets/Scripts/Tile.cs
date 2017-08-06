@@ -2,7 +2,8 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-//to be later updated for use with pathfinding hueristics
+/* Controls properties of a single tile */
+//to be updated for use with pathfinding hueristics
 public class Tile : MonoBehaviour
 {
 	/* Fields */

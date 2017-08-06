@@ -2,6 +2,10 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+//Define camera modes
+public enum CameraMode {OrthoFreeMode, OrthoFollowMode, PerspFreeMode, PerspFollowMode, PerspTrackMode};
+
+/* Controls actions that affect the camera */
 public class CameraController : MonoBehaviour
 {
 	/* Fields */
@@ -10,54 +14,72 @@ public class CameraController : MonoBehaviour
 	public Camera cam;
 	public Transform target;
 
-	//Define camera modes
-	public enum CameraMode {Orthographic, LockedPerspective, FreePerspective};
-	private CameraMode camMode = CameraMode.Orthographic;
-	public CameraMode CamMode
-	{
-		get { return camMode; }
-		private set { camMode = value; }
-	}
+	//used to keep track of current camera mode
+	[HideInInspector]
+	public CameraMode mode = CameraMode.OrthoFreeMode;
 
 	//transition-related stuff
 	private bool transitioning;
-	public float fadeTime;
-	private float fadeCounter = 0f;
+	public float transitionTime;
+	private float transitionCount = 0f;
 	private Vector2 nearFarClippingLimits = new Vector2();
 
-	//orthographic scrolling
+	//orthographic-related stuff
 	public enum ScrollMode { EdgeScroll, DragScroll }
 	public ScrollMode scrollMode;
 	public float orthoScrollPadding, orthoScrollLimit;
 	public Vector2 orthoZoomLimits;
 	public float zoomSpeed;
 	public bool smoothZooming;
-	private float zoomTo, zoomCount = 0f, zoomTime = 1f;
+	private float orthoZoomTo, orthoZoomCount = 0f, orthoZoomTime = 1f;
+	[HideInInspector]
 	public Vector3 orthoCenter = new Vector3(0f, 45f, 0f);
-	public Vector3 orthoRotation = new Vector3(30f, 45f, 0f);
-	private Vector3 currentRotation;
-	public float rotationTime;
-	private float rotationCount = 0f;
-	public Vector3 CameraCenter
+	private Vector3 orthoRotation = new Vector3(30f, 45f, 0f);
+	private Vector3 currentOrthoRotation;
+	public float orthoRotationTime;
+	private float orthoRotationCount = 0f;
+	private Vector3 CameraCenter
 	{
 		get
 		{
-			return orthoCenter - transform.forward * nearFarClippingLimits.y / 2f;
+			return orthoCenter - transform.forward * nearFarClippingLimits.y * 0.5f;
 		}
 	}
 	private Vector3 prevMouseHoldPos, dragOrigin, cameraDragOrigin;
 	private float dragDistance, dragTime, dragSpeed = 100f;
 	public bool Dragging { get { return dragDistance > 0.05f || dragTime > 1f; } }
+
+	//perspective-related stuff
+	public float freeMoveSpeed, freeRotateSpeed;
+	public bool invertedX, invertedY;
+	public Vector2 rotationLimit;
+	private Vector3 currentPerspRotation;
+	public float perspFollowDistance;
+	private float currentPerspFollowDistance;
+	public Vector2 perspFollowDistanceLimits;
+	private float perspFollowDistanceCount = 0f, perspFollowDistanceTime = 1f;
+	private float transitionToPerspFollowCount = 0f, transitionToPerspFollowTime = 1f;
+	public bool TransitioningToPerspFollow
+	{
+		get
+		{
+			return transitionToPerspFollowCount < transitionToPerspFollowTime;
+		}
+	}
 	#endregion
 
 	void Start()
 	{
+		//get references
 		cam = GetComponent<Camera>();
-		//get near and far clipping planes
+
+		//variable initialising
 		nearFarClippingLimits.x = cam.nearClipPlane;
 		nearFarClippingLimits.y = cam.farClipPlane;
-		zoomTo = cam.orthographicSize;
-		currentRotation = orthoRotation;
+		orthoZoomTo = cam.orthographicSize;
+		currentOrthoRotation = orthoRotation;
+		currentPerspRotation = orthoRotation;
+		currentPerspFollowDistance = perspFollowDistance;
 	}
 
 	private void EarlyUpdate()
@@ -86,21 +108,36 @@ public class CameraController : MonoBehaviour
 			return;
 		}
 
-		switch(camMode)
+		//lock cursor if in persp free or persp follow mode
+		Cursor.lockState = mode == CameraMode.PerspFreeMode || mode == CameraMode.PerspFollowMode ?
+			CursorLockMode.Locked : CursorLockMode.None;
+
+		//only run certain code based on current camera mode
+		switch(mode)
 		{
-		case CameraMode.Orthographic:
+		case CameraMode.OrthoFreeMode:
 			{
-				UpdateOrthographic();
+				UpdateOrthoFree();
 				break;
 			}
-		case CameraMode.LockedPerspective:
+		case CameraMode.OrthoFollowMode:
 			{
-				UpdateLocked();
+				UpdateOrthoFollow();
 				break;
 			}
-		case CameraMode.FreePerspective:
+		case CameraMode.PerspFreeMode:
 			{
-				UpdateFree();
+				UpdatePerspFree();
+				break;
+			}
+		case CameraMode.PerspFollowMode:
+			{
+				UpdatePerspFollow();
+				break;
+			}
+		case CameraMode.PerspTrackMode:
+			{
+				UpdatePerspTrack();
 				break;
 			}
 		}
@@ -115,40 +152,22 @@ public class CameraController : MonoBehaviour
 		{
 			prevMouseHoldPos = Input.mousePosition;
 		}
-	}
+  	}
 
-	private bool CheckTransition()
-	{
-		//if already in a transition then return true
-		if (transitioning)
-		{
-			return true;
-		}
-		//if player is trying to start a transition then start it and return true
-		if (Input.GetKeyDown(KeyCode.Space))
-		{
-			StartCoroutine(FadeOut());
-			rotationCount = rotationTime;
-			zoomCount = zoomTime;
-			return true;
-		}
-		//otherwise return false
-		return false;
-	}
-
-	/* Orthographic Updates */
+	/* OrthoFreeMode Updates */
 	#region
-	private void UpdateOrthographic()
+	private void UpdateOrthoFree()
 	{
-		CheckOrthographicScrolling();
-		CheckOrthographicZooming();
-		CheckOrthographicRotating();
+		//check input for scrolling, zooming or rotating the camera
+		CheckOrthoFreeScroll();
+		CheckOrthoFreeZoom();
+		CheckOrthoFreeRotate();
 	}
 
 	/* Scroll Input related */
 	#region
 	//Based on the current scroll mode, check certain kinds of input
-	private void CheckOrthographicScrolling()
+	private void CheckOrthoFreeScroll()
 	{
 		switch (scrollMode)
 		{
@@ -237,163 +256,393 @@ public class CameraController : MonoBehaviour
 
 	/* Zoom Input related */
 	#region
-	private void CheckOrthographicZooming()
+	private void CheckOrthoFreeZoom()
 	{
 		//check to see if the mouse wheel is being used
 		float mouseScroll = -Input.mouseScrollDelta.y;
 		if (mouseScroll != 0)
 		{
 			//reset zoom Count to allow for smooth scrolling
-			zoomCount = 0;
+			orthoZoomCount = 0;
 			//apply zoom
-			zoomTo += mouseScroll * zoomSpeed;
+			orthoZoomTo += mouseScroll * zoomSpeed;
 			//if zoom surpassed the limits then bring it back in line
-			if (zoomTo < orthoZoomLimits.x)
+			if (orthoZoomTo < orthoZoomLimits.x)
 			{
-				zoomTo = orthoZoomLimits.x;
+				orthoZoomTo = orthoZoomLimits.x;
 			}
-			if (zoomTo > orthoZoomLimits.y)
+			if (orthoZoomTo > orthoZoomLimits.y)
 			{
-				zoomTo = orthoZoomLimits.y;
+				orthoZoomTo = orthoZoomLimits.y;
 			}
 		}
 		//increment zoom counter for smooth scrolling
-		zoomCount += Time.deltaTime;
+		orthoZoomCount += Time.deltaTime;
 		//if smooth zooming is enabled then gradually zoom to calculated orthographic size
 		if (smoothZooming)
 		{
-			cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, zoomTo, zoomCount / zoomTime);
+			cam.orthographicSize = Mathf.Lerp(cam.orthographicSize, orthoZoomTo, orthoZoomCount / orthoZoomTime);
 		}
 		//otherwise just set the zoom to what it should be
 		else
 		{
-			cam.orthographicSize = zoomTo;
+			cam.orthographicSize = orthoZoomTo;
 		}
 	}
 	#endregion
 
 	/* Rotation Input related */
 	#region
-	private void CheckOrthographicRotating()
+	private void CheckOrthoFreeRotate()
 	{
 		//increment counter
-		rotationCount += Time.deltaTime;
+		orthoRotationCount += Time.deltaTime;
 		//check input
-		if (Input.GetKeyDown(KeyCode.LeftArrow))
+		if (!transitioning)
 		{
-			orthoRotation.y += 90f;
-			rotationCount = 0f;
-		}
-		if (Input.GetKeyDown(KeyCode.RightArrow))
-		{
-			orthoRotation.y -= 90f;
-			rotationCount = 0f;
+			if (Input.GetKeyDown(KeyCode.A))
+			{
+				orthoRotation.y += 90f;
+				orthoRotationCount = 0f;
+			}
+			if (Input.GetKeyDown(KeyCode.D))
+			{
+				orthoRotation.y -= 90f;
+				orthoRotationCount = 0f;
+			}
 		}
 		//apply rotation and readjust position to always look at center after rotating
 		if (transform.eulerAngles != orthoRotation)
 		{
-			currentRotation.y = Mathf.Lerp(currentRotation.y, orthoRotation.y, rotationCount / rotationTime);
-			if (currentRotation.y < -135f)
+			currentOrthoRotation.y = Mathf.Lerp(currentOrthoRotation.y, orthoRotation.y, orthoRotationCount / orthoRotationTime);
+			if (currentOrthoRotation.y < -135f)
 			{
-				currentRotation.y += 360f;
+				currentOrthoRotation.y += 360f;
 				orthoRotation.y += 360f;
 				transform.eulerAngles += Vector3.up * 360F;
 			}
-			if (currentRotation.y >= 225f)
+			if (currentOrthoRotation.y >= 225f)
 			{
-				currentRotation.y -= 360f;
+				currentOrthoRotation.y -= 360f;
 				orthoRotation.y -= 360f;
 				transform.eulerAngles -= Vector3.up * 360F;
 			}
-			transform.eulerAngles = currentRotation;
+			transform.eulerAngles = currentOrthoRotation;
 			transform.position = CameraCenter;
 		}
 	}
 	#endregion
 	#endregion
 
-	/* Locked Perspective Updates */
+	/* OrthoFollowMode Updates */
 	#region
-	private void UpdateLocked()
+	private void UpdateOrthoFollow()
 	{
 		
 	}
 	#endregion
 
-	/* Free Perspective Updates */
+	/* PerspFreeMode Updates */
 	#region
-	private void UpdateFree()
+	private void UpdatePerspFree()
+	{
+		//check input for moving, rotating and zooming the camera
+		CheckPerspFreeMove();
+		CheckPerspFreeRotate();
+	}
+
+	/* Move Input related */
+	#region
+	private void CheckPerspFreeMove()
+	{
+		if (Input.GetKey(KeyCode.W))
+		{
+			transform.position += transform.forward * Time.deltaTime * freeMoveSpeed;
+		}
+		if (Input.GetKey(KeyCode.A))
+		{
+			transform.position -= transform.right * Time.deltaTime * freeMoveSpeed;
+		}
+		if (Input.GetKey(KeyCode.S))
+		{
+			transform.position -= transform.forward * Time.deltaTime * freeMoveSpeed;
+		}
+		if (Input.GetKey(KeyCode.D))
+		{
+			transform.position += transform.right * Time.deltaTime * freeMoveSpeed;
+		}
+	}
+	#endregion
+
+	/* Rotate Input related */
+	#region
+	private void CheckPerspFreeRotate()
+	{
+		//check to see how far the mouse has moved
+		Vector2 mouseMove = cam.ScreenToViewportPoint(new Vector2(Input.GetAxis("Mouse X"), -Input.GetAxis("Mouse Y")));
+
+		//flip rotation based on inverted settings
+		mouseMove.x *= invertedX ? -1f : 1f;
+		mouseMove.y *= invertedY ? -1f : 1f;
+
+		//adjust rotation speed
+		mouseMove *= freeRotateSpeed;
+
+		//add horizontal mouse movements to Y rotation and vertical mouse movements to X rotation
+		currentPerspRotation.x += mouseMove.y;
+		currentPerspRotation.y += mouseMove.x;
+
+		//limit the vertical rotation angle
+		if (currentPerspRotation.x < rotationLimit.x)
+		{
+			currentPerspRotation.x = rotationLimit.x;
+		}
+		if (currentPerspRotation.x > rotationLimit.y)
+		{
+			currentPerspRotation.x = rotationLimit.y;
+		}
+
+		//apply rotation
+		transform.eulerAngles = currentPerspRotation;
+	}
+           	#endregion
+	#endregion
+
+	/* PerspFollowMode Updates */
+	#region
+	private void UpdatePerspFollow()
+	{
+		//get rotation and position to begin manipulating
+		Vector3 rot = transform.eulerAngles, pos = transform.position;
+
+		//check if still transitioning
+		if (TransitioningToPerspFollow)
+		{
+			//increment counter for transition
+			transitionToPerspFollowCount += Time.deltaTime;
+			//lerp rotation
+			rot.y = Mathf.Lerp(rot.y, target.eulerAngles.y, transitionToPerspFollowCount / transitionToPerspFollowTime);
+			//apply calculated rotation
+			transform.eulerAngles = rot;
+			//lerp position
+			pos = Vector3.Lerp(pos, target.position - transform.forward * perspFollowDistance,
+				transitionToPerspFollowCount / transitionToPerspFollowTime);
+			//apply calculated position
+			transform.position = pos;
+		}
+		else
+		{
+			//check for rotation input
+			CheckPerspFollowRotationInput();
+			//re-initialise rot variable
+			rot = transform.eulerAngles;
+			//keep x rotation the same
+			rot.x = transform.eulerAngles.x;
+			//have y rotation match the target's
+			rot.y = target.eulerAngles.y;
+			//apply calculated rotation
+			transform.eulerAngles = rot;
+			//check for follow distance changes
+			CheckPerspFollowZoomInput();
+		}
+	}
+
+	/* Persp Follow Distance related */
+	#region
+	private void CheckPerspFollowZoomInput()
+	{
+		//check to see if the mouse wheel is being used
+		float mouseScroll = -Input.mouseScrollDelta.y;
+		if (mouseScroll != 0)
+		{
+			//reset zoom Count to allow for smooth scrolling
+			perspFollowDistanceCount = 0;
+			//apply zoom
+			perspFollowDistance += mouseScroll * zoomSpeed;
+			//if zoom surpassed the limits then bring it back in line
+			if (perspFollowDistance < perspFollowDistanceLimits.x)
+			{
+				perspFollowDistance = perspFollowDistanceLimits.x;
+			}
+			if (perspFollowDistance > perspFollowDistanceLimits.y)
+			{
+				perspFollowDistance = perspFollowDistanceLimits.y;
+			}
+		}
+		//increment zoom counter for smooth scrolling
+		perspFollowDistanceCount += Time.deltaTime;
+		//if smooth zooming is enabled then gradually zoom to calculated orthographic size
+		if (smoothZooming)
+		{
+			currentPerspFollowDistance = Mathf.Lerp(
+				currentPerspFollowDistance, perspFollowDistance, perspFollowDistanceCount / perspFollowDistanceTime);
+		}
+		//otherwise just set the zoom to what it should be
+		else
+		{
+			currentPerspFollowDistance = perspFollowDistance;
+		}
+
+		//move to calculated position
+		transform.position = target.position - transform.forward * currentPerspFollowDistance;
+	}
+	#endregion
+
+	/* Persp Follow Rotation related */
+	#region
+	private void CheckPerspFollowRotationInput()
+	{
+		//get vertical mouse input
+		Vector2 mouseMove = cam.ScreenToViewportPoint(new Vector2(0f, Input.GetAxis("Mouse Y")));
+
+		//invert input based on settings
+		mouseMove.y *= invertedY ? -1f : 1f;
+
+		//adjust rotation speed based on settings
+		mouseMove.y *= freeRotateSpeed;
+
+		//apply rotation
+		transform.eulerAngles += Vector3.left * mouseMove.y;
+	}
+	#endregion
+	#endregion
+
+	/* PerspTrackMode Updates */
+	#region
+	private void UpdatePerspTrack()
 	{
 		
 	}
 	#endregion
 
 	//changes the camera mode
-	public void SetMode(CameraMode mode)
+	public void SetMode(CameraMode camMode)
 	{
-		camMode = mode;
-		switch (camMode)
+		//sets the mode
+		mode = camMode;
+		//changes camera's ortho or persp property
+		cam.orthographic = mode == CameraMode.OrthoFreeMode || mode == CameraMode.OrthoFollowMode;
+		//adjust position and rotation to suit the mode
+		if (cam.orthographic)
 		{
-		case CameraMode.Orthographic:
+			transform.eulerAngles = orthoRotation;
+			transform.position = CameraCenter;
+		}
+	}
+
+	//checks whether user is trying to initiate a transition
+	private bool CheckTransition()
+	{
+		//if already in a transition then return true
+		if (transitioning)
+		{
+			return true;
+		}
+		//if player is trying to start a transition then start it and return true
+		if (Input.GetKeyDown(KeyCode.Alpha1) && mode != CameraMode.OrthoFreeMode)
+		{
+			if (cam.orthographic)
 			{
-				cam.orthographic = true;
-				break;
+				SetMode(CameraMode.OrthoFreeMode);
 			}
-		case CameraMode.LockedPerspective:
+			else
 			{
-				cam.orthographic = false;
-				break;
+				StartCoroutine(FadeOut(CameraMode.OrthoFreeMode));
+				currentPerspRotation = orthoRotation;
+				return true;
 			}
-		case CameraMode.FreePerspective:
+		}
+		if (Input.GetKeyDown(KeyCode.Alpha2) && mode != CameraMode.OrthoFollowMode)
+		{
+			if (cam.orthographic)
 			{
-				cam.orthographic = false;
-				break;
+				SetMode(CameraMode.OrthoFollowMode);
+			}
+			else
+			{
+				StartCoroutine(FadeOut(CameraMode.OrthoFollowMode));
+				currentPerspRotation = orthoRotation;
+				return true;
+			}
+		}
+		if (Input.GetKeyDown(KeyCode.Alpha3) && mode != CameraMode.PerspFreeMode)
+		{
+			if (cam.orthographic)
+			{
+				StartCoroutine(FadeOut(CameraMode.PerspFreeMode));
+				orthoRotationCount = orthoRotationTime;
+				orthoZoomCount = orthoZoomTime;
+				return true;
+			}
+			else
+			{
+				SetMode(CameraMode.PerspFreeMode);
+				currentPerspRotation = transform.eulerAngles;
+				if (currentPerspRotation.x > rotationLimit.y)
+				{
+					currentPerspRotation.x -= 360f;
+				}
+			}
+		}
+		if (Input.GetKeyDown(KeyCode.Alpha4) && mode != CameraMode.PerspFollowMode)
+		{
+			if (cam.orthographic)
+			{
+				StartCoroutine(FadeOut(CameraMode.PerspFollowMode));
+				orthoRotationCount = orthoRotationTime;
+				orthoZoomCount = orthoZoomTime;
+				return true;
+			}
+			else
+			{
+				SetMode(CameraMode.PerspFollowMode);
+			}
+			transitionToPerspFollowCount = 0f;
+		}
+		if (Input.GetKeyDown(KeyCode.Alpha5) && mode != CameraMode.PerspTrackMode)
+		{
+			if (cam.orthographic)
+			{
+				StartCoroutine(FadeOut(CameraMode.PerspTrackMode));
+				orthoRotationCount = orthoRotationTime;
+				orthoZoomCount = orthoZoomTime;
+				return true;
+			}
+			else
+			{
+				SetMode(CameraMode.PerspTrackMode);
 			}
 		}
 
-		transform.eulerAngles = orthoRotation;
-		transform.position = CameraCenter;
+		//otherwise return false
+		return false;
 	}
 
 	/* Transition Effect */
 	#region
-	private IEnumerator FadeOut()
+	private IEnumerator FadeOut(CameraMode mode)
 	{
 		float halfway = (nearFarClippingLimits.x + nearFarClippingLimits.y) / 2f;
 		//start fading out
 		transitioning = true;
-		fadeCounter = 0;
+		transitionCount = 0;
 		//loop until the clipping planes match after a certain amount of time
-		while (fadeCounter < fadeTime * 0.45f)
+		while (transitionCount < transitionTime * 0.45f)
 		{
 			//increment counter
-			fadeCounter += Time.deltaTime;
+			transitionCount += Time.deltaTime;
 			//adjust camera's far clip plane
-			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, halfway, fadeCounter / (fadeTime * 0.45f));
-			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, halfway + 0.001f, fadeCounter / (fadeTime * 0.45f));
+			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, halfway, transitionCount / (transitionTime * 0.45f));
+			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, halfway + 0.001f, transitionCount / (transitionTime * 0.45f));
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
 		//reset counter, change camera mode and start fading back in
-		if (cam.orthographic)
-		{
-			if (target != null)
-			{
-				SetMode(CameraMode.LockedPerspective);
-			}
-			else
-			{
-				SetMode(CameraMode.FreePerspective);
-			}
-		}
-		else
-		{
-			SetMode(CameraMode.Orthographic);
-		}
+		SetMode(mode);
 
-		while (fadeCounter < fadeTime * 0.55f)
+		while (transitionCount < transitionTime * 0.55f)
 		{
-			fadeCounter += Time.deltaTime;
+			transitionCount += Time.deltaTime;
 			yield return 0;
 		}
 
@@ -403,15 +652,15 @@ public class CameraController : MonoBehaviour
 	private IEnumerator FadeIn()
 	{
 		//start fading in
-		fadeCounter = 0;
+		transitionCount = 0;
 		//loop until the clipping planes match after a certain amount of time
-		while (fadeCounter < fadeTime * 0.45f)
+		while (transitionCount < transitionTime * 0.45f)
 		{
 			//increment counter
-			fadeCounter += Time.deltaTime;
+			transitionCount += Time.deltaTime;
 			//adjust camera's far clip plane
-			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, nearFarClippingLimits.x, fadeCounter / (fadeTime * 0.45f));
-			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, nearFarClippingLimits.y, fadeCounter / (fadeTime * 0.45f));
+			cam.nearClipPlane = Mathf.Lerp(cam.nearClipPlane, nearFarClippingLimits.x, transitionCount / (transitionTime * 0.45f));
+			cam.farClipPlane = Mathf.Lerp(cam.farClipPlane, nearFarClippingLimits.y, transitionCount / (transitionTime * 0.45f));
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
