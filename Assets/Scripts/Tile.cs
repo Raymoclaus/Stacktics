@@ -10,6 +10,8 @@ public class Tile : MonoBehaviour
 	#region
 	//reference to tile prefab
 	public Transform tile;
+	//reference to physics material to add to collider
+	public PhysicMaterial mat;
 	//coordinates contains x position, z position and floor
 	private Vector3 coordinates;
 	public int Size
@@ -49,5 +51,7 @@ public class Tile : MonoBehaviour
 		transform.position = new Vector3(coordinates.x * tile.localScale.x, sizeOffset.y, coordinates.y * tile.localScale.z);
 		transform.localScale = new Vector3(1f, sizeOffset.x, 1f);
 		tile.gameObject.SetActive(sizeOffset.x != 0);
+		BoxCollider col = tile.gameObject.AddComponent<BoxCollider>();
+		col.material = mat;
 	}
 }

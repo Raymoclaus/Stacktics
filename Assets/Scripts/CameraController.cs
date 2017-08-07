@@ -12,7 +12,7 @@ public class CameraController : MonoBehaviour
 	#region
 	//reference to components and external objects
 	public Camera cam;
-	public Transform target;
+	public CharController target;
 
 	//used to keep track of current camera mode
 	[HideInInspector]
@@ -412,36 +412,36 @@ public class CameraController : MonoBehaviour
 	#region
 	private void UpdatePerspFollow()
 	{
-		//get rotation and position to begin manipulating
-		Vector3 rot = transform.eulerAngles, pos = transform.position;
+		//get position to begin manipulating
+		Vector3 pos = transform.position;
 
 		//check if still transitioning
 		if (TransitioningToPerspFollow)
 		{
+			//get rotation
+			currentPerspRotation = transform.eulerAngles;
 			//increment counter for transition
 			transitionToPerspFollowCount += Time.deltaTime;
 			//lerp rotation
-			rot.y = Mathf.Lerp(rot.y, target.eulerAngles.y, transitionToPerspFollowCount / transitionToPerspFollowTime);
+			currentPerspRotation.y = Mathf.Lerp(currentPerspRotation.y, target.rotation.y, transitionToPerspFollowCount / transitionToPerspFollowTime);
 			//apply calculated rotation
-			transform.eulerAngles = rot;
+			transform.eulerAngles = currentPerspRotation;
 			//lerp position
-			pos = Vector3.Lerp(pos, target.position - transform.forward * perspFollowDistance,
+			pos = Vector3.Lerp(pos, target.camLookAt.position - transform.forward * perspFollowDistance,
 				transitionToPerspFollowCount / transitionToPerspFollowTime);
 			//apply calculated position
 			transform.position = pos;
 		}
 		else
 		{
+			//camera can only start rotating left/right if the transition is finished
+			target.cameraFollowing = true;
 			//check for rotation input
 			CheckPerspFollowRotationInput();
-			//re-initialise rot variable
-			rot = transform.eulerAngles;
-			//keep x rotation the same
-			rot.x = transform.eulerAngles.x;
 			//have y rotation match the target's
-			rot.y = target.eulerAngles.y;
+			currentPerspRotation.y = target.rotation.y;
 			//apply calculated rotation
-			transform.eulerAngles = rot;
+			transform.eulerAngles = currentPerspRotation;
 			//check for follow distance changes
 			CheckPerspFollowZoomInput();
 		}
@@ -484,7 +484,7 @@ public class CameraController : MonoBehaviour
 		}
 
 		//move to calculated position
-		transform.position = target.position - transform.forward * currentPerspFollowDistance;
+		transform.position = target.camLookAt.position - transform.forward * currentPerspFollowDistance;
 	}
 	#endregion
 
@@ -501,8 +501,21 @@ public class CameraController : MonoBehaviour
 		//adjust rotation speed based on settings
 		mouseMove.y *= freeRotateSpeed;
 
-		//apply rotation
-		transform.eulerAngles += Vector3.left * mouseMove.y;
+		//calculate rotation
+		currentPerspRotation.x -= mouseMove.y;
+
+		//limit the vertical rotation angle
+		if (currentPerspRotation.x < rotationLimit.x)
+		{
+			currentPerspRotation.x = rotationLimit.x;
+		}
+		if (currentPerspRotation.x > rotationLimit.y)
+		{
+			currentPerspRotation.x = rotationLimit.y;
+		}
+
+		//apply calculated rotation
+		transform.eulerAngles = currentPerspRotation;
 	}
 	#endregion
 	#endregion
@@ -552,7 +565,7 @@ public class CameraController : MonoBehaviour
 				return true;
 			}
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha2) && mode != CameraMode.OrthoFollowMode)
+		if (Input.GetKeyDown(KeyCode.Alpha2) && mode != CameraMode.OrthoFollowMode && target != null)
 		{
 			if (cam.orthographic)
 			{
@@ -567,6 +580,12 @@ public class CameraController : MonoBehaviour
 		}
 		if (Input.GetKeyDown(KeyCode.Alpha3) && mode != CameraMode.PerspFreeMode)
 		{
+			if (target != null)
+			{
+				target.mode = CharCtrlMode.Waiting;
+				target.cameraFollowing = false;
+			}
+
 			if (cam.orthographic)
 			{
 				StartCoroutine(FadeOut(CameraMode.PerspFreeMode));
@@ -584,8 +603,12 @@ public class CameraController : MonoBehaviour
 				}
 			}
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha4) && mode != CameraMode.PerspFollowMode)
+		if (Input.GetKeyDown(KeyCode.Alpha4) && mode != CameraMode.PerspFollowMode && target != null)
 		{
+			transitionToPerspFollowCount = 0f;
+			//make sure the target can move
+			target.mode = CharCtrlMode.FreeMovement;
+
 			if (cam.orthographic)
 			{
 				StartCoroutine(FadeOut(CameraMode.PerspFollowMode));
@@ -597,9 +620,8 @@ public class CameraController : MonoBehaviour
 			{
 				SetMode(CameraMode.PerspFollowMode);
 			}
-			transitionToPerspFollowCount = 0f;
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha5) && mode != CameraMode.PerspTrackMode)
+		if (Input.GetKeyDown(KeyCode.Alpha5) && mode != CameraMode.PerspTrackMode && target != null)
 		{
 			if (cam.orthographic)
 			{
