@@ -143,7 +143,17 @@ public class CharController : MonoBehaviour
 		mouseMove.x *= cam.freeRotateSpeed;
 
 		//calculate rotation
-		rotation += Vector3.up * mouseMove.x;
+		rotation.y += mouseMove.x;
+
+		//make sure it doesn't go above a certain threshold
+		if (rotation.y > 360f)
+		{
+			rotation.y -= 360f;
+		}
+		if (rotation.y < 0f)
+		{
+			rotation.y += 360f;
+		}
 
 		//apply rotation
 		body.eulerAngles += Vector3.up * mouseMove.x;

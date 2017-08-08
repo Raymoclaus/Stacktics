@@ -12,13 +12,14 @@ public class CameraController : MonoBehaviour
 	#region
 	//reference to components and external objects
 	public Camera cam;
-	public CharController target;
+	public CharController charTarget;
+	public Transform orthoFreeTarget;
 
 	//used to keep track of current camera mode
 	[HideInInspector]
 	public CameraMode mode = CameraMode.OrthoFreeMode;
 
-	//transition-related stuff
+	//ortho/persp transition-related stuff
 	private bool transitioning;
 	public float transitionTime;
 	private float transitionCount = 0f;
@@ -33,19 +34,12 @@ public class CameraController : MonoBehaviour
 	public bool smoothZooming;
 	private float orthoZoomTo, orthoZoomCount = 0f, orthoZoomTime = 1f;
 	[HideInInspector]
-	public Vector3 orthoCenter = new Vector3(0f, 45f, 0f);
+	public Vector3 mapCenter = new Vector3(0f, 45f, 0f);
 	private Vector3 orthoRotation = new Vector3(30f, 45f, 0f);
 	private Vector3 currentOrthoRotation;
 	public float orthoRotationTime;
 	private float orthoRotationCount = 0f;
-	private Vector3 CameraCenter
-	{
-		get
-		{
-			return orthoCenter - transform.forward * nearFarClippingLimits.y * 0.5f;
-		}
-	}
-	private Vector3 prevMouseHoldPos, dragOrigin, cameraDragOrigin;
+	private Vector3 prevMouseHoldPos, dragOrigin, targetOrigin;
 	private float dragDistance, dragTime, dragSpeed = 100f;
 	public bool Dragging { get { return dragDistance > 0.05f || dragTime > 1f; } }
 
@@ -84,11 +78,6 @@ public class CameraController : MonoBehaviour
 
 	private void EarlyUpdate()
 	{
-		if (Input.GetMouseButtonDown(0))
-		{
-			dragOrigin = Input.mousePosition;
-			cameraDragOrigin = transform.position;
-		}
 		if (Input.GetMouseButtonUp(0))
 		{
 			dragDistance = 0;
@@ -148,6 +137,11 @@ public class CameraController : MonoBehaviour
 
 	private void LateUpdate()
 	{
+		if (Input.GetMouseButtonDown(0))
+		{
+			dragOrigin = Input.mousePosition;
+			targetOrigin = orthoFreeTarget.position;
+		}
 		if (Input.GetMouseButton(0))
 		{
 			prevMouseHoldPos = Input.mousePosition;
@@ -189,28 +183,28 @@ public class CameraController : MonoBehaviour
 		//check left side of the screen
 		if (Input.mousePosition.x < orthoScrollPadding)
 		{
-			Scroll(270f, 1f);
+			Scroll(-orthoFreeTarget.right);
 		}
 		//check right side of the screen
 		if (Input.mousePosition.x > Screen.width - orthoScrollPadding)
 		{
-			Scroll(90f, 1f);
+			Scroll(orthoFreeTarget.right);
 		}
 		//check top side of the screen
 		if (Input.mousePosition.y > Screen.height - orthoScrollPadding)
 		{
-			Scroll(0f, 1f);
+			Scroll(orthoFreeTarget.forward);
 		}
 		//check bottom side of the screen
 		if (Input.mousePosition.y < orthoScrollPadding)
 		{
-			Scroll(180f, 1f);
+			Scroll(-orthoFreeTarget.forward);
 		}
 	}
 
 	public void CheckDragScrollInput()
 	{
-		if (Input.GetMouseButton(0))
+		if (Input.GetMouseButton(0) && prevMouseHoldPos != Vector3.zero)
 		{
 			dragDistance += Vector3.Distance(
 				cam.ScreenToViewportPoint(Input.mousePosition), cam.ScreenToViewportPoint(prevMouseHoldPos));
@@ -219,38 +213,31 @@ public class CameraController : MonoBehaviour
 
 		if (Dragging)
 		{
-			float angle = Vector3.Angle(Vector3.up, Input.mousePosition - dragOrigin + Vector3.up);
-			//alter to 360 degree rotation
-			if (Input.mousePosition.x < dragOrigin.x)
-			{
-				angle = 180f + (180f - angle);
-			}
-			transform.position = cameraDragOrigin;
-			Scroll(angle + 180f, dragSpeed * Vector3.Distance(cam.ScreenToViewportPoint(Input.mousePosition), cam.ScreenToViewportPoint(dragOrigin)));
+			orthoFreeTarget.position = targetOrigin;
+			Vector3 dir = (cam.ScreenToViewportPoint(Input.mousePosition) - cam.ScreenToViewportPoint(dragOrigin))
+				* dragSpeed;
+			Vector3 move = Vector3.zero;
+			move = orthoFreeTarget.right * -dir.x;
+			move += orthoFreeTarget.forward * -dir.y;
+			Scroll(move);
 		}
 	}
 
-	//moves the camera in a given direction altered by the camera's rotation
-	private void Scroll(float angle, float speed)
+	private void Scroll(Vector3 direction)
 	{
-		angle += transform.eulerAngles.y;
-		//determine direction to scroll in
-		Vector3 scroll = new Vector3(Mathf.Sin(Mathf.Deg2Rad * (angle)), 0f,  Mathf.Cos(Mathf.Deg2Rad * (angle)));
-		scroll.Normalize();
-		scroll *= speed;
-		//apply direction
-		transform.position += (Vector3)scroll * cam.orthographicSize / 30F;
-		//check to see if camera has reached scroll limit
-		Vector3 pos = transform.position;
-		if (Mathf.Abs(pos.x - CameraCenter.x) > orthoScrollLimit && pos.x != 0)
+		//move the camera target
+		orthoFreeTarget.position += direction * cam.orthographicSize / 30f;
+		//keep it within bounds
+		Vector3 distance = orthoFreeTarget.position - mapCenter;
+		if (Mathf.Abs(distance.x) > orthoScrollLimit)
 		{
-			pos.x = CameraCenter.x + orthoScrollLimit * Mathf.Abs(pos.x) / pos.x;
+			orthoFreeTarget.position -= Vector3.right * (Mathf.MoveTowards(distance.x, 0f, orthoScrollLimit));
 		}
-		if (Mathf.Abs(pos.z - CameraCenter.z) > orthoScrollLimit && pos.z != 0)
+		if (Mathf.Abs(distance.z) > orthoScrollLimit)
 		{
-			pos.z = CameraCenter.z + orthoScrollLimit * Mathf.Abs(pos.z) / pos.z;
+			orthoFreeTarget.position -= Vector3.forward * (Mathf.MoveTowards(distance.z, 0f, orthoScrollLimit));
 		}
-		transform.position = pos;
+		Recenter();
 	}
 	#endregion
 
@@ -319,16 +306,16 @@ public class CameraController : MonoBehaviour
 			{
 				currentOrthoRotation.y += 360f;
 				orthoRotation.y += 360f;
-				transform.eulerAngles += Vector3.up * 360F;
+				orthoFreeTarget.eulerAngles += Vector3.up * 360F;
 			}
 			if (currentOrthoRotation.y >= 225f)
 			{
 				currentOrthoRotation.y -= 360f;
 				orthoRotation.y -= 360f;
-				transform.eulerAngles -= Vector3.up * 360F;
+				orthoFreeTarget.eulerAngles -= Vector3.up * 360F;
 			}
-			transform.eulerAngles = currentOrthoRotation;
-			transform.position = CameraCenter;
+			orthoFreeTarget.eulerAngles = Vector3.up * currentOrthoRotation.y;
+			Recenter();
 		}
 	}
 	#endregion
@@ -420,14 +407,18 @@ public class CameraController : MonoBehaviour
 		{
 			//get rotation
 			currentPerspRotation = transform.eulerAngles;
+			if (currentPerspRotation.x > rotationLimit.y)
+			{
+				currentPerspRotation.x -= 360f;
+			}
 			//increment counter for transition
 			transitionToPerspFollowCount += Time.deltaTime;
 			//lerp rotation
-			currentPerspRotation.y = Mathf.Lerp(currentPerspRotation.y, target.rotation.y, transitionToPerspFollowCount / transitionToPerspFollowTime);
+			currentPerspRotation.y = Mathf.Lerp(currentPerspRotation.y, charTarget.rotation.y, transitionToPerspFollowCount / transitionToPerspFollowTime);
 			//apply calculated rotation
 			transform.eulerAngles = currentPerspRotation;
 			//lerp position
-			pos = Vector3.Lerp(pos, target.camLookAt.position - transform.forward * perspFollowDistance,
+			pos = Vector3.Lerp(pos, charTarget.camLookAt.position - transform.forward * perspFollowDistance,
 				transitionToPerspFollowCount / transitionToPerspFollowTime);
 			//apply calculated position
 			transform.position = pos;
@@ -435,11 +426,11 @@ public class CameraController : MonoBehaviour
 		else
 		{
 			//camera can only start rotating left/right if the transition is finished
-			target.cameraFollowing = true;
+			charTarget.cameraFollowing = true;
 			//check for rotation input
 			CheckPerspFollowRotationInput();
 			//have y rotation match the target's
-			currentPerspRotation.y = target.rotation.y;
+			currentPerspRotation.y = charTarget.rotation.y;
 			//apply calculated rotation
 			transform.eulerAngles = currentPerspRotation;
 			//check for follow distance changes
@@ -484,7 +475,7 @@ public class CameraController : MonoBehaviour
 		}
 
 		//move to calculated position
-		transform.position = target.camLookAt.position - transform.forward * currentPerspFollowDistance;
+		transform.position = charTarget.camLookAt.position - transform.forward * currentPerspFollowDistance;
 	}
 	#endregion
 
@@ -538,8 +529,9 @@ public class CameraController : MonoBehaviour
 		//adjust position and rotation to suit the mode
 		if (cam.orthographic)
 		{
-			transform.eulerAngles = orthoRotation;
-			transform.position = CameraCenter;
+			currentOrthoRotation = orthoRotation;
+			orthoFreeTarget.position = mapCenter;
+			Recenter();
 		}
 	}
 
@@ -565,7 +557,7 @@ public class CameraController : MonoBehaviour
 				return true;
 			}
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha2) && mode != CameraMode.OrthoFollowMode && target != null)
+		if (Input.GetKeyDown(KeyCode.Alpha2) && mode != CameraMode.OrthoFollowMode && charTarget != null)
 		{
 			if (cam.orthographic)
 			{
@@ -580,10 +572,10 @@ public class CameraController : MonoBehaviour
 		}
 		if (Input.GetKeyDown(KeyCode.Alpha3) && mode != CameraMode.PerspFreeMode)
 		{
-			if (target != null)
+			if (charTarget != null)
 			{
-				target.mode = CharCtrlMode.Waiting;
-				target.cameraFollowing = false;
+				charTarget.mode = CharCtrlMode.Waiting;
+				charTarget.cameraFollowing = false;
 			}
 
 			if (cam.orthographic)
@@ -603,11 +595,11 @@ public class CameraController : MonoBehaviour
 				}
 			}
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha4) && mode != CameraMode.PerspFollowMode && target != null)
+		if (Input.GetKeyDown(KeyCode.Alpha4) && mode != CameraMode.PerspFollowMode && charTarget != null)
 		{
 			transitionToPerspFollowCount = 0f;
 			//make sure the target can move
-			target.mode = CharCtrlMode.FreeMovement;
+			charTarget.mode = CharCtrlMode.FreeMovement;
 
 			if (cam.orthographic)
 			{
@@ -621,7 +613,7 @@ public class CameraController : MonoBehaviour
 				SetMode(CameraMode.PerspFollowMode);
 			}
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha5) && mode != CameraMode.PerspTrackMode && target != null)
+		if (Input.GetKeyDown(KeyCode.Alpha5) && mode != CameraMode.PerspTrackMode && charTarget != null)
 		{
 			if (cam.orthographic)
 			{
@@ -690,4 +682,13 @@ public class CameraController : MonoBehaviour
 		transitioning = false;
 	}
 	#endregion
+
+	private void Recenter()
+	{
+		transform.eulerAngles = currentOrthoRotation;
+		Vector3 rot = transform.eulerAngles;
+		rot.y = orthoFreeTarget.eulerAngles.y;
+		transform.eulerAngles = rot;
+		transform.position = orthoFreeTarget.position - transform.forward * nearFarClippingLimits.y / 2f;
+	}
 }
