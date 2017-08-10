@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 //Define camera modes
-public enum CameraMode {OrthoFreeMode, OrthoFollowMode, PerspFreeMode, PerspFollowMode, PerspTrackMode};
+public enum CameraMode {None, OrthoFreeMode, OrthoFollowMode, PerspFreeMode, PerspFollowMode, PerspTrackMode};
 
 /* Controls actions that affect the camera */
 public class CameraController : MonoBehaviour
@@ -13,11 +13,11 @@ public class CameraController : MonoBehaviour
 	//reference to components and external objects
 	public Camera cam;
 	public CharController charTarget;
-	public Transform orthoFreeTarget;
+	public Transform orthoTarget;
 
 	//used to keep track of current camera mode
 	[HideInInspector]
-	public CameraMode mode = CameraMode.OrthoFreeMode;
+	public CameraMode mode = CameraMode.None;
 
 	//ortho/persp transition-related stuff
 	private bool transitioning;
@@ -140,7 +140,7 @@ public class CameraController : MonoBehaviour
 		if (Input.GetMouseButtonDown(0))
 		{
 			dragOrigin = Input.mousePosition;
-			targetOrigin = orthoFreeTarget.position;
+			targetOrigin = orthoTarget.position;
 		}
 		if (Input.GetMouseButton(0))
 		{
@@ -154,8 +154,8 @@ public class CameraController : MonoBehaviour
 	{
 		//check input for scrolling, zooming or rotating the camera
 		CheckOrthoFreeScroll();
-		CheckOrthoFreeZoom();
-		CheckOrthoFreeRotate();
+		CheckOrthoZoomInput();
+		CheckOrthoRotateInput();
 	}
 
 	/* Scroll Input related */
@@ -183,22 +183,22 @@ public class CameraController : MonoBehaviour
 		//check left side of the screen
 		if (Input.mousePosition.x < orthoScrollPadding)
 		{
-			Scroll(-orthoFreeTarget.right);
+			Scroll(-orthoTarget.right);
 		}
 		//check right side of the screen
 		if (Input.mousePosition.x > Screen.width - orthoScrollPadding)
 		{
-			Scroll(orthoFreeTarget.right);
+			Scroll(orthoTarget.right);
 		}
 		//check top side of the screen
 		if (Input.mousePosition.y > Screen.height - orthoScrollPadding)
 		{
-			Scroll(orthoFreeTarget.forward);
+			Scroll(orthoTarget.forward);
 		}
 		//check bottom side of the screen
 		if (Input.mousePosition.y < orthoScrollPadding)
 		{
-			Scroll(-orthoFreeTarget.forward);
+			Scroll(-orthoTarget.forward);
 		}
 	}
 
@@ -213,12 +213,12 @@ public class CameraController : MonoBehaviour
 
 		if (Dragging)
 		{
-			orthoFreeTarget.position = targetOrigin;
+			orthoTarget.position = targetOrigin;
 			Vector3 dir = (cam.ScreenToViewportPoint(Input.mousePosition) - cam.ScreenToViewportPoint(dragOrigin))
 				* dragSpeed;
 			Vector3 move = Vector3.zero;
-			move = orthoFreeTarget.right * -dir.x;
-			move += orthoFreeTarget.forward * -dir.y;
+			move = orthoTarget.right * -dir.x;
+			move += orthoTarget.forward * -dir.y;
 			Scroll(move);
 		}
 	}
@@ -226,16 +226,16 @@ public class CameraController : MonoBehaviour
 	private void Scroll(Vector3 direction)
 	{
 		//move the camera target
-		orthoFreeTarget.position += direction * cam.orthographicSize / 30f;
+		orthoTarget.position += direction * cam.orthographicSize / 30f;
 		//keep it within bounds
-		Vector3 distance = orthoFreeTarget.position - mapCenter;
+		Vector3 distance = orthoTarget.position - mapCenter;
 		if (Mathf.Abs(distance.x) > orthoScrollLimit)
 		{
-			orthoFreeTarget.position -= Vector3.right * (Mathf.MoveTowards(distance.x, 0f, orthoScrollLimit));
+			orthoTarget.position -= Vector3.right * (Mathf.MoveTowards(distance.x, 0f, orthoScrollLimit));
 		}
 		if (Mathf.Abs(distance.z) > orthoScrollLimit)
 		{
-			orthoFreeTarget.position -= Vector3.forward * (Mathf.MoveTowards(distance.z, 0f, orthoScrollLimit));
+			orthoTarget.position -= Vector3.forward * (Mathf.MoveTowards(distance.z, 0f, orthoScrollLimit));
 		}
 		Recenter();
 	}
@@ -243,7 +243,7 @@ public class CameraController : MonoBehaviour
 
 	/* Zoom Input related */
 	#region
-	private void CheckOrthoFreeZoom()
+	private void CheckOrthoZoomInput()
 	{
 		//check to see if the mouse wheel is being used
 		float mouseScroll = -Input.mouseScrollDelta.y;
@@ -280,7 +280,7 @@ public class CameraController : MonoBehaviour
 
 	/* Rotation Input related */
 	#region
-	private void CheckOrthoFreeRotate()
+	private void CheckOrthoRotateInput()
 	{
 		//increment counter
 		orthoRotationCount += Time.deltaTime;
@@ -306,15 +306,15 @@ public class CameraController : MonoBehaviour
 			{
 				currentOrthoRotation.y += 360f;
 				orthoRotation.y += 360f;
-				orthoFreeTarget.eulerAngles += Vector3.up * 360F;
+				orthoTarget.eulerAngles += Vector3.up * 360F;
 			}
 			if (currentOrthoRotation.y >= 225f)
 			{
 				currentOrthoRotation.y -= 360f;
 				orthoRotation.y -= 360f;
-				orthoFreeTarget.eulerAngles -= Vector3.up * 360F;
+				orthoTarget.eulerAngles -= Vector3.up * 360F;
 			}
-			orthoFreeTarget.eulerAngles = Vector3.up * currentOrthoRotation.y;
+			orthoTarget.eulerAngles = Vector3.up * currentOrthoRotation.y;
 			Recenter();
 		}
 	}
@@ -325,7 +325,20 @@ public class CameraController : MonoBehaviour
 	#region
 	private void UpdateOrthoFollow()
 	{
-		
+		//zooming and rotating allowed in this mode same as OrthoFreeMode
+		CheckOrthoZoomInput();
+		CheckOrthoRotateInput();
+		Recenter();
+	}
+
+	private void DetermineOrthoCameraTarget()
+	{
+		//draws a line from camera to the charTarget until y = 0 and places the orthoTarget at those coordinates
+		orthoTarget.position = charTarget.transform.position +
+			(charTarget.transform.position.y / Mathf.Cos(Mathf.Deg2Rad * (90f - transform.eulerAngles.x))) * transform.forward;
+		//Summarised: position = char position +
+		//	(char height above y=0 / cos(90 - camera look down angle)) * camera facing direction
+		//  ^  This part is the hypotenuse of an imaginary triangle  ^
 	}
 	#endregion
 
@@ -522,16 +535,52 @@ public class CameraController : MonoBehaviour
 	//changes the camera mode
 	public void SetMode(CameraMode camMode)
 	{
-		//sets the mode
-		mode = camMode;
-		//changes camera's ortho or persp property
-		cam.orthographic = mode == CameraMode.OrthoFreeMode || mode == CameraMode.OrthoFollowMode;
-		//adjust position and rotation to suit the mode
-		if (cam.orthographic)
+		//only run code if mode is changing
+		if (mode != camMode)
 		{
+			//check if current mode is orthographic and if new mode is orthographic
+			bool newModeIsOrtho = camMode == CameraMode.OrthoFreeMode || camMode == CameraMode.OrthoFollowMode;
+			bool currentModeIsOrtho = mode == CameraMode.OrthoFreeMode || mode == CameraMode.OrthoFollowMode;
+
+			//perform transition if new mode is changing viewing mode to/from orthographic
+			if (newModeIsOrtho != currentModeIsOrtho && mode != CameraMode.None)
+			{
+				StartCoroutine(FadeOut());
+			}
+
+			/* set visual effect-related variables to avoid visual bugs */
 			currentOrthoRotation = orthoRotation;
-			orthoFreeTarget.position = mapCenter;
-			Recenter();
+			orthoRotationCount = orthoRotationTime;
+			orthoZoomCount = orthoZoomTime;
+			transitionToPerspFollowCount = 0f;
+			charTarget.mode = CharCtrlMode.Waiting;
+			charTarget.cameraFollowing = false;
+			currentPerspRotation = orthoRotation;
+			if (newModeIsOrtho)
+			{
+				orthoTarget.position = mapCenter;
+				Recenter();
+			}
+			switch (camMode)
+			{
+			case CameraMode.PerspFreeMode:
+				{
+					currentPerspRotation = transform.eulerAngles;
+					if (currentPerspRotation.x > rotationLimit.y)
+					{
+						currentPerspRotation.x -= 360f;
+					}
+					break;
+				}
+			case CameraMode.PerspFollowMode:
+				{
+					charTarget.mode = CharCtrlMode.FreeMovement;
+					break;
+				}
+			}
+
+			//sets the mode
+			mode = camMode;
 		}
 	}
 
@@ -543,89 +592,32 @@ public class CameraController : MonoBehaviour
 		{
 			return true;
 		}
+
 		//if player is trying to start a transition then start it and return true
-		if (Input.GetKeyDown(KeyCode.Alpha1) && mode != CameraMode.OrthoFreeMode)
+		if (Input.GetKeyDown(KeyCode.Alpha1))
 		{
-			if (cam.orthographic)
-			{
-				SetMode(CameraMode.OrthoFreeMode);
-			}
-			else
-			{
-				StartCoroutine(FadeOut(CameraMode.OrthoFreeMode));
-				currentPerspRotation = orthoRotation;
-				return true;
-			}
+			SetMode(CameraMode.OrthoFreeMode);
+			return true;
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha2) && mode != CameraMode.OrthoFollowMode && charTarget != null)
+		if (Input.GetKeyDown(KeyCode.Alpha2))
 		{
-			if (cam.orthographic)
-			{
-				SetMode(CameraMode.OrthoFollowMode);
-			}
-			else
-			{
-				StartCoroutine(FadeOut(CameraMode.OrthoFollowMode));
-				currentPerspRotation = orthoRotation;
-				return true;
-			}
+			SetMode(CameraMode.OrthoFollowMode);
+			return true;
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha3) && mode != CameraMode.PerspFreeMode)
+		if (Input.GetKeyDown(KeyCode.Alpha3))
 		{
-			if (charTarget != null)
-			{
-				charTarget.mode = CharCtrlMode.Waiting;
-				charTarget.cameraFollowing = false;
-			}
-
-			if (cam.orthographic)
-			{
-				StartCoroutine(FadeOut(CameraMode.PerspFreeMode));
-				orthoRotationCount = orthoRotationTime;
-				orthoZoomCount = orthoZoomTime;
-				return true;
-			}
-			else
-			{
-				SetMode(CameraMode.PerspFreeMode);
-				currentPerspRotation = transform.eulerAngles;
-				if (currentPerspRotation.x > rotationLimit.y)
-				{
-					currentPerspRotation.x -= 360f;
-				}
-			}
+			SetMode(CameraMode.PerspFreeMode);
+			return true;
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha4) && mode != CameraMode.PerspFollowMode && charTarget != null)
+		if (Input.GetKeyDown(KeyCode.Alpha4))
 		{
-			transitionToPerspFollowCount = 0f;
-			//make sure the target can move
-			charTarget.mode = CharCtrlMode.FreeMovement;
-
-			if (cam.orthographic)
-			{
-				StartCoroutine(FadeOut(CameraMode.PerspFollowMode));
-				orthoRotationCount = orthoRotationTime;
-				orthoZoomCount = orthoZoomTime;
-				return true;
-			}
-			else
-			{
-				SetMode(CameraMode.PerspFollowMode);
-			}
+			SetMode(CameraMode.PerspFollowMode);
+			return true;
 		}
-		if (Input.GetKeyDown(KeyCode.Alpha5) && mode != CameraMode.PerspTrackMode && charTarget != null)
+		if (Input.GetKeyDown(KeyCode.Alpha5))
 		{
-			if (cam.orthographic)
-			{
-				StartCoroutine(FadeOut(CameraMode.PerspTrackMode));
-				orthoRotationCount = orthoRotationTime;
-				orthoZoomCount = orthoZoomTime;
-				return true;
-			}
-			else
-			{
-				SetMode(CameraMode.PerspTrackMode);
-			}
+			SetMode(CameraMode.PerspTrackMode);
+			return true;
 		}
 
 		//otherwise return false
@@ -634,12 +626,13 @@ public class CameraController : MonoBehaviour
 
 	/* Transition Effect */
 	#region
-	private IEnumerator FadeOut(CameraMode mode)
+	private IEnumerator FadeOut()
 	{
+		//signal start of transition
 		float halfway = (nearFarClippingLimits.x + nearFarClippingLimits.y) / 2f;
-		//start fading out
 		transitioning = true;
 		transitionCount = 0;
+
 		//loop until the clipping planes match after a certain amount of time
 		while (transitionCount < transitionTime * 0.45f)
 		{
@@ -651,15 +644,26 @@ public class CameraController : MonoBehaviour
 			//wait until end of frame before continuing loop
 			yield return 0;
 		}
-		//reset counter, change camera mode and start fading back in
-		SetMode(mode);
 
+		//change camera mode
+		cam.orthographic = mode == CameraMode.OrthoFreeMode || mode == CameraMode.OrthoFollowMode;
+		if (mode == CameraMode.OrthoFreeMode)
+		{
+			Recenter();
+		}
+		if (mode == CameraMode.OrthoFollowMode)
+		{
+			Recenter();
+		}
+
+		//slight delay before beginning fade in transition
 		while (transitionCount < transitionTime * 0.55f)
 		{
 			transitionCount += Time.deltaTime;
 			yield return 0;
 		}
 
+		//start fade in transition
 		StartCoroutine(FadeIn());
 	}
 
@@ -685,10 +689,14 @@ public class CameraController : MonoBehaviour
 
 	private void Recenter()
 	{
+		if (mode == CameraMode.OrthoFollowMode)
+		{
+			DetermineOrthoCameraTarget();
+		}
 		transform.eulerAngles = currentOrthoRotation;
 		Vector3 rot = transform.eulerAngles;
-		rot.y = orthoFreeTarget.eulerAngles.y;
+		rot.y = orthoTarget.eulerAngles.y;
 		transform.eulerAngles = rot;
-		transform.position = orthoFreeTarget.position - transform.forward * nearFarClippingLimits.y / 2f;
+		transform.position = orthoTarget.position - transform.forward * nearFarClippingLimits.y / 2f;
 	}
 }

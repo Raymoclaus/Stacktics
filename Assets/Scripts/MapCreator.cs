@@ -47,7 +47,7 @@ public class MapCreator : MonoBehaviour
 		if (camCtrl != null)
 		{
 			camCtrl.mapCenter = Center;
-			camCtrl.orthoFreeTarget.position = Center;
+			camCtrl.orthoTarget.position = Center;
 			camCtrl.SetMode(CameraMode.OrthoFreeMode);
 		}
 	}
