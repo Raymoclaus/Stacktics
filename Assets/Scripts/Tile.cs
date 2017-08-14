@@ -13,7 +13,7 @@ public class Tile : MonoBehaviour
 	//reference to physics material to add to collider
 	public PhysicMaterial mat;
 	//coordinates contains x position, z position and floor
-	private Vector3 coordinates;
+	public Coords coordinates;
 	public int Size
 	{
 		get
@@ -44,13 +44,14 @@ public class Tile : MonoBehaviour
 	}
 	#endregion
 
-	public void Init(Vector3 coordinates, Vector2 sizeOffset)
+	public void Init(Coords coordinates, Vector2 sizeOffset)
 	{
 		//adjust properties of the holder
 		this.coordinates = coordinates;
-		transform.position = new Vector3(coordinates.x * tile.localScale.x, sizeOffset.y, coordinates.y * tile.localScale.z);
+		transform.position = new Vector3(this.coordinates.x * tile.localScale.x, sizeOffset.y, this.coordinates.z * tile.localScale.z);
 		transform.localScale = new Vector3(1f, sizeOffset.x, 1f);
-		tile.gameObject.SetActive(sizeOffset.x != 0);
+		tile.gameObject.SetActive(sizeOffset.x > 0);
+		this.coordinates.y = Height;
 		BoxCollider col = tile.gameObject.AddComponent<BoxCollider>();
 		col.material = mat;
 	}

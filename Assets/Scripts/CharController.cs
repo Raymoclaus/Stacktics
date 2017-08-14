@@ -23,11 +23,20 @@ public class CharController : MonoBehaviour
 
 	//related to player movement
 	private Vector3 vel = Vector3.zero;
-	public float gravity, moveSpeed, jumpForce, deceleration;
-	public float fallLimit;
+	public float gravity = 50f, moveSpeed = 8f, jumpForce = 20f, deceleration = 30f, fallLimit = 30f;
 	private float accuracy = 0.01f;
 	private bool isGrounded;
+	[HideInInspector]
 	public Vector3 rotation = Vector3.zero;
+
+	//character stats
+	[Header("Character Stats")]
+	public int move;
+	public int jump;
+	public float atk, mAtk, def, mDef, spd, hp, nrg, mana;
+	public float fireAtk, waterAtk, iceAtk, earthAtk, windAtk, thunderAtk, lightAtk, darkAtk;
+	public float fireRes, waterRes, iceRes, earthRes, windRes, thunderRes, lightRes, darkRes;
+	public float statusRes, debuffRes;
 	#endregion
 
 	void Start()
@@ -96,7 +105,7 @@ public class CharController : MonoBehaviour
 		vel.z = Mathf.MoveTowards(vel.z, 0f, Time.deltaTime * deceleration);
 	}
 
-	private void CheckMovementInput()
+	public virtual void CheckMovementInput()
 	{
 		//disallow player to do vertical movement except via a jump
 		Vector3 fwd = body.forward * moveSpeed;
