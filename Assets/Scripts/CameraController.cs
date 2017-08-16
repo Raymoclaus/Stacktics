@@ -14,6 +14,7 @@ public class CameraController : MonoBehaviour
 	public Camera cam;
 	public CharController charTarget;
 	public Transform orthoTarget;
+	public GameObject crosshair;
 
 	//used to keep track of current camera mode
 	[HideInInspector]
@@ -97,9 +98,13 @@ public class CameraController : MonoBehaviour
 			return;
 		}
 
-		//lock cursor if in persp free or persp follow mode
-		Cursor.lockState = mode == CameraMode.PerspFreeMode || mode == CameraMode.PerspFollowMode ?
-			CursorLockMode.Locked : CursorLockMode.None;
+		//lock cursor and show crosshair if in persp free or persp follow mode
+		bool perspFreeFollow = mode == CameraMode.PerspFreeMode || mode == CameraMode.PerspFollowMode;
+		Cursor.lockState = perspFreeFollow ? CursorLockMode.Locked : CursorLockMode.None;
+		if (crosshair != null)
+		{
+			crosshair.SetActive(perspFreeFollow);
+		}
 
 		//only run certain code based on current camera mode
 		switch(mode)
@@ -216,10 +221,7 @@ public class CameraController : MonoBehaviour
 			orthoTarget.position = targetOrigin;
 			Vector3 dir = (cam.ScreenToViewportPoint(Input.mousePosition) - cam.ScreenToViewportPoint(dragOrigin))
 				* dragSpeed;
-			Vector3 move = Vector3.zero;
-			move = orthoTarget.right * -dir.x;
-			move += orthoTarget.forward * -dir.y;
-			Scroll(move);
+			Scroll(orthoTarget.forward * -dir.y + orthoTarget.right * -dir.x);
 		}
 	}
 
@@ -370,6 +372,10 @@ public class CameraController : MonoBehaviour
 		if (Input.GetKey(KeyCode.D))
 		{
 			transform.position += transform.right * Time.deltaTime * freeMoveSpeed;
+		}
+		if (Input.GetKey(KeyCode.Space))
+		{
+			transform.position += Vector3.up * Time.deltaTime * freeMoveSpeed;
 		}
 	}
 	#endregion
@@ -556,9 +562,8 @@ public class CameraController : MonoBehaviour
 			charTarget.mode = CharCtrlMode.Waiting;
 			charTarget.cameraFollowing = false;
 			currentPerspRotation = orthoRotation;
-			if (newModeIsOrtho)
+			if (mode == CameraMode.None)
 			{
-				orthoTarget.position = mapCenter;
 				Recenter();
 			}
 			switch (camMode)
@@ -649,8 +654,9 @@ public class CameraController : MonoBehaviour
 		cam.orthographic = mode == CameraMode.OrthoFreeMode || mode == CameraMode.OrthoFollowMode;
 		if (mode == CameraMode.OrthoFreeMode)
 		{
-			Recenter();
+			orthoTarget.position = mapCenter;
 		}
+		Recenter();
 		if (mode == CameraMode.OrthoFollowMode)
 		{
 			Recenter();

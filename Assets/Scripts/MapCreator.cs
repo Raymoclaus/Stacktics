@@ -104,7 +104,7 @@ public class MapCreator : MonoBehaviour
 					if (coords[i][j][k].x > 0)
 					{
 						//create new tile
-						Tile newTile = (Tile)Instantiate(tilePrefab, transform);
+						Tile newTile = Instantiate<Tile>(tilePrefab, transform);
 						newTile.Init(new Coords(i, j, k), coords[i][j][k]);
 						//store new tile in the tiles nested list
 						tiles[i][j].Add(newTile);
@@ -121,12 +121,29 @@ public class MapCreator : MonoBehaviour
 
 		mapSize.Scale(tilePrefab.Scale);
 	}
+
+	//returns a list of tiles located at (x, z) coordinates
+	public List<Tile> GetTilesAtCoords(int x, int z)
+	{
+		return tiles[x][z];
+	}
 }
 
 public struct Coords
 {
+	//required values for coordinates
 	public int x, z, y, floor;
 
+	//empty coordinates are used for when coordinates are not found or don't exist
+	public Coords Empty
+	{
+		get
+		{
+			return new Coords(-1, -1, -1, -1);
+		}
+	}
+
+	//return Coords when y value is unknown
 	public Coords(int x, int z, int floor)
 	{
 		this.x = x;
@@ -135,6 +152,7 @@ public struct Coords
 		this.floor = floor;
 	}
 
+	//return Coords given all parameters
 	public Coords(int x, int z, int y, int floor)
 	{
 		this.x = x;
@@ -143,6 +161,7 @@ public struct Coords
 		this.floor = floor;
 	}
 
+	//return Coords based on the position given
 	public Coords(Vector3 pos)
 	{
 		Vector3 size = MapCreator.map.tileSize;
@@ -164,6 +183,38 @@ public struct Coords
 			}
 		}
 		floor = f;
+	}
+
+	//return coords of adjacent tile based on given a character
+	public Coords Forward(CharController character)
+	{
+		//grab required variables
+		float charRotation = character.rotation.y;
+		Vector3 size = MapCreator.map.tileSize;
+
+		//check if looking forward
+		if (charRotation <= 45f || charRotation >= 315f)
+		{
+			return new Coords(character.transform.position + Vector3.forward * size.z);
+		}
+		//check if looking right
+		if (charRotation >= 45f && charRotation <= 135f)
+		{
+			return new Coords(character.transform.position + Vector3.right * size.x);
+		}
+		//check if looking back
+		if (charRotation >= 135f && charRotation <= 225f)
+		{
+			return new Coords(character.transform.position - Vector3.forward * size.z);
+		}
+		//check if looking left
+		if (charRotation >= 225f && charRotation <= 315f)
+		{
+			return new Coords(character.transform.position - Vector3.right * size.x);
+		}
+
+		//if nothing was found return empty Coords
+		return Empty;
 	}
 
 	public override string ToString()

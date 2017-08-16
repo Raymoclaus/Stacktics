@@ -23,7 +23,7 @@ public class CharController : MonoBehaviour
 
 	//related to player movement
 	private Vector3 vel = Vector3.zero;
-	public float gravity = 50f, moveSpeed = 8f, jumpForce = 20f, deceleration = 30f, fallLimit = 30f;
+	public float gravity = 50f, moveSpeed = 50f, jumpForce = 20f, deceleration = 30f, fallLimit = 30f, speedLimit = 8f;
 	private float accuracy = 0.01f;
 	private bool isGrounded;
 	[HideInInspector]
@@ -56,13 +56,11 @@ public class CharController : MonoBehaviour
 				}
 				CheckMovementInput();
 				PhysicsEffects();
-				rigid.velocity = vel;
 				break;
 			}
 		case CharCtrlMode.Waiting:
 			{
 				PhysicsEffects();
-				rigid.velocity = vel;
 				break;
 			}
 		case CharCtrlMode.AIControlled:
@@ -91,6 +89,15 @@ public class CharController : MonoBehaviour
 		{
 			vel.y = -fallLimit;
 		}
+		//limit horizontal speed
+		Vector2 speedCheck = new Vector2(vel.x, vel.z);
+		if (Vector2.Distance(Vector2.zero, speedCheck) > speedLimit)
+		{
+			speedCheck.Normalize();
+			speedCheck *= speedLimit;
+			vel.x = speedCheck.x;
+			vel.z = speedCheck.y;
+		}
 
 		//unfortunate Unity bug requires this
 		//Occasionally rigidbody gets stuck on colliders even when it doesn't look like it should
@@ -103,34 +110,31 @@ public class CharController : MonoBehaviour
 		//gradually slow down horizontal movement
 		vel.x = Mathf.MoveTowards(vel.x, 0f, Time.deltaTime * deceleration);
 		vel.z = Mathf.MoveTowards(vel.z, 0f, Time.deltaTime * deceleration);
+
+		//apply velocity to rigidbody
+		Vector3 calculatedVelocity = body.forward * vel.z + body.right * vel.x;
+		calculatedVelocity.y = vel.y;
+		rigid.velocity = calculatedVelocity;
 	}
 
 	public virtual void CheckMovementInput()
 	{
-		//disallow player to do vertical movement except via a jump
-		Vector3 fwd = body.forward * moveSpeed;
-		Vector3 rht = body.right * moveSpeed;
-
 		//get horizontal movement input
 		if (Input.GetKey(KeyCode.W))
 		{
-			vel.x = fwd.x;
-			vel.z = fwd.z;
+			vel.z += Time.deltaTime * moveSpeed;
 		}
 		if (Input.GetKey(KeyCode.A))
 		{
-			vel.x = -rht.x;
-			vel.z = -rht.z;
+			vel.x -= Time.deltaTime * moveSpeed;
 		}
 		if (Input.GetKey(KeyCode.S))
 		{
-			vel.x = -fwd.x;
-			vel.z = -fwd.z;
+			vel.z -= Time.deltaTime * moveSpeed;
 		}
 		if (Input.GetKey(KeyCode.D))
 		{
-			vel.x = rht.x;
-			vel.z = rht.z;
+			vel.x += Time.deltaTime * moveSpeed;
 		}
 
 		//check for jump input
