@@ -48,6 +48,10 @@ public class Tile : MonoBehaviour
 	{
 		//adjust properties of the holder
 		this.coordinates = coordinates;
+		if (sizeOffset.x < 0)
+		{
+			sizeOffset.x = 0;
+		}
 		transform.position = new Vector3(this.coordinates.x * tile.localScale.x, sizeOffset.y, this.coordinates.z * tile.localScale.z);
 		transform.localScale = new Vector3(1f, sizeOffset.x, 1f);
 		tile.gameObject.SetActive(sizeOffset.x > 0);

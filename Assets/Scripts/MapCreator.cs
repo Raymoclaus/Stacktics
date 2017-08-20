@@ -50,7 +50,14 @@ public class MapCreator : MonoBehaviour
 		}
 
 		//if no coordinates are provided create a basic default map of coordinates
-		CreateRandomMatrix();
+		CreateLandMatrix();
+		RandomiseLandscape(false);
+		RandomiseLandscape(true);
+
+		if (coords[0][0][0].x <= 1)
+		{
+			coords[0][0][0] = Vector2.right * 5;
+		}
 		//once the coords have been filled out, instantiate copies of the landTile at each coordinate
 		CreateLandTiles();
 		//set the center position of the camera
@@ -62,10 +69,10 @@ public class MapCreator : MonoBehaviour
 		}
 	}
 
-	private void CreateRandomMatrix()
+	private void CreateLandMatrix()
 	{
 		//some arbitrary values for creating a default level
-		int width = Random.Range(10, 20), length = Random.Range(10, 20), levels = 2;
+		int width = Random.Range(20, 30), length = Random.Range(20, 30), levels = 1;
 
 		for (int i = 0; i < width; i++)
 		{
@@ -75,15 +82,59 @@ public class MapCreator : MonoBehaviour
 				coords[i].Add(new List<Vector2>());
 				for (int k = 0; k < levels; k++)
 				{
-					int randSize = Random.Range(1, 9);
-
-					if (k > 0 && Random.Range(0, 4) > 0)
-					{
-						randSize = 0;
-					}
-
-					coords[i][j].Add(new Vector2(randSize, k * 8));
+					coords[i][j].Add(Vector2.right * 5f);
 				}
+			}
+		}
+	}
+
+	//Modified Perlin Noise method
+	private void RandomiseLandscape(bool includeNext)
+	{
+		int height = 0, variance = 5;
+
+		for (int x = 0; x < coords.Count; x++)
+		{
+			for (int z = 0; z < coords[x].Count; z++)
+			{
+				List<int> surrHeights = new List<int>();
+
+				if (x > 0)
+				{
+					surrHeights.Add((int)coords[x - 1][z][0].x);
+				}
+				if (z > 0)
+				{
+					surrHeights.Add((int)coords[x][z - 1][0].x);
+				}
+				if (includeNext)
+				{
+					if (x < coords.Count - 1)
+					{
+						surrHeights.Add((int)coords[x + 1][z][0].x);
+					}
+					if (z < coords[x].Count - 1)
+					{
+						surrHeights.Add((int)coords[x][z + 1][0].x);
+					}
+				}
+
+				if (surrHeights.Count > 1)
+				{
+					height = 0;
+					for (int i = 0; i < surrHeights.Count; i++)
+					{
+						height += surrHeights[i];
+					}
+					height = Mathf.RoundToInt((float)height / (float)surrHeights.Count);
+					height = Random.Range(height - variance, height + variance + 1);
+				}
+				else
+				{
+					height = Random.Range(1, variance * 2);
+				}
+
+				coords[x][z][0] = Vector2.right * height;
 			}
 		}
 	}
@@ -93,6 +144,7 @@ public class MapCreator : MonoBehaviour
 	 */
 	private void CreateLandTiles()
 	{
+		int count = 0;
 		for (int i = 0; i < coords.Count; i++)
 		{
 			tiles.Add(new List<List<Tile>>());
@@ -101,16 +153,14 @@ public class MapCreator : MonoBehaviour
 				tiles[i].Add(new List<Tile>());
 				for (int k = 0; k < coords[i][j].Count; k++)
 				{
-					if (coords[i][j][k].x > 0)
-					{
-						//create new tile
-						Tile newTile = Instantiate<Tile>(tilePrefab, transform);
-						newTile.Init(new Coords(i, j, k), coords[i][j][k]);
-						//store new tile in the tiles nested list
-						tiles[i][j].Add(newTile);
+					//create new tile
+					Tile newTile = Instantiate<Tile>(tilePrefab, transform);
+					newTile.Init(new Coords(i, j, k), coords[i][j][k]);
+					//store new tile in the tiles nested list
+					tiles[i][j].Add(newTile);
+					count++;
 
-						mapSize.y = k > mapSize.y ? k : mapSize.y;
-					}
+					mapSize.y = k > mapSize.y ? k : mapSize.y;
 				}
 
 				mapSize.z = j > mapSize.z ? j : mapSize.z;
@@ -120,6 +170,8 @@ public class MapCreator : MonoBehaviour
 		}
 
 		mapSize.Scale(tilePrefab.Scale);
+
+		StaticBatchingUtility.Combine(gameObject);
 	}
 
 	//returns a list of tiles located at (x, z) coordinates
