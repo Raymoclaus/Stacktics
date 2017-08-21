@@ -28,11 +28,16 @@ public class CharController : MonoBehaviour
 	private bool isGrounded;
 	[HideInInspector]
 	public Vector3 rotation = Vector3.zero;
+
+	//keep track of current coordinates
+	public Coords coordinates = Coords.Empty;
+	private Vector3 prevPos;
 	#endregion
 
 	void Start()
 	{
 		mode = CharCtrlMode.Waiting;
+		UpdateCoordinates();
 	}
 
 	void Update()
@@ -58,6 +63,12 @@ public class CharController : MonoBehaviour
 			{
 				break;
 			}
+		}
+
+		if (prevPos != transform.position)
+		{
+			UpdateCoordinates();
+			prevPos = transform.position;
 		}
 	}
 
@@ -188,5 +199,30 @@ public class CharController : MonoBehaviour
 			1 << LayerMask.NameToLayer("Ground"));
 
 		return check[0] && !check[1];
+	}
+
+	private void UpdateCoordinates()
+	{
+		Coords updatedCoordinates = new Coords(transform.position);
+		//if coordinates have changed
+		if (!updatedCoordinates.IsSameXZ(coordinates))
+		{
+			//get tiles around old coordinates
+			List<List<Tile>> tiles = MapCreator.map.GetTilesAroundCoords(coordinates, MapCreator.distTrack, null);
+			//add tiles around new coordinates
+			tiles = MapCreator.map.GetTilesAroundCoords(updatedCoordinates, MapCreator.distTrack, tiles);
+
+			//update current coordinates
+			coordinates = updatedCoordinates;
+
+			//go through all all those tiles and updated their colliders
+			foreach (List<Tile> tilesAtCoords in tiles)
+			{
+				foreach (Tile tile in tilesAtCoords)
+				{
+					tile.UpdateCollider(updatedCoordinates);
+				}
+			}
+		}
 	}
 }

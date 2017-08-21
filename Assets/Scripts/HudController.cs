@@ -12,8 +12,8 @@ public class HudController : MonoBehaviour
 	{
 		if (MapCreator.map != null)
 		{
-			currentCoords.text = new Coords(currentChar.transform.position).ToString();
-			forwardCoords.text = new Coords(currentChar.transform.position).Forward(currentChar).ToString();
+			currentCoords.text = currentChar.coordinates.ToString();
+			forwardCoords.text = currentChar.coordinates.Forward(currentChar).ToString();
 		}
 	}
 }

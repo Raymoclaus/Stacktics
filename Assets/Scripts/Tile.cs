@@ -8,8 +8,11 @@ public class Tile : MonoBehaviour
 {
 	/* Fields */
 	#region
+	public int dist;
 	//reference to tile prefab
 	public Transform tile;
+	//reference to collider
+	private BoxCollider col;
 	//reference to physics material to add to collider
 	public PhysicMaterial mat;
 	//coordinates contains x position, z position and floor
@@ -56,7 +59,34 @@ public class Tile : MonoBehaviour
 		transform.localScale = new Vector3(1f, sizeOffset.x, 1f);
 		tile.gameObject.SetActive(sizeOffset.x > 0);
 		this.coordinates.y = Height;
-		BoxCollider col = tile.gameObject.AddComponent<BoxCollider>();
+		col = tile.gameObject.AddComponent<BoxCollider>();
 		col.material = mat;
+		col.enabled = false;
+	}
+
+	public void UpdateCollider(Coords coords)
+	{
+		dist = coordinates.Distance(coords);
+		if (coordinates.Distance(coords) > MapCreator.distTrack)
+		{
+			CheckForChars();
+		}
+		else
+		{
+			col.enabled = true;
+		}
+	}
+
+	private void CheckForChars()
+	{
+		col.enabled = false;
+		foreach (CharController chara in MapCreator.map.existingChars)
+		{
+			if (coordinates.Distance(chara.coordinates) <= MapCreator.distTrack)
+			{
+				col.enabled = true;
+				break;
+			}
+		}
 	}
 }

@@ -11,6 +11,8 @@ public class MapCreator : MonoBehaviour
 	public CameraController camCtrl;
 	public Tile tilePrefab;
 	public static MapCreator map;
+	public List<CharController> existingChars;
+	public Transform staticHolder, nonStaticHolder;
 
 	//nested list of coordinates to place tiles. Each Vector2 determines vertical size and vertical offset
 	//coords[horizontal level (x)][z inset][vertical level (y)]
@@ -35,6 +37,9 @@ public class MapCreator : MonoBehaviour
 			return new Vector3(mapSize.x / 2f, mapSize.y, mapSize.z / 2f);
 		}
 	}
+	//affects the amount of tiles each charcontroller needs to keep track of
+	public const int distTrack = 2;
+	public Vector2 mapLength, mapWidth;
 	#endregion
 
 	void Start()
@@ -52,11 +57,11 @@ public class MapCreator : MonoBehaviour
 		//if no coordinates are provided create a basic default map of coordinates
 		CreateLandMatrix();
 		RandomiseLandscape(false);
-		RandomiseLandscape(true);
+//		RandomiseLandscape(true);
 
 		if (coords[0][0][0].x <= 1)
 		{
-			coords[0][0][0] = Vector2.right * 5;
+			coords[0][0][0] = Vector2.right * 1;
 		}
 		//once the coords have been filled out, instantiate copies of the landTile at each coordinate
 		CreateLandTiles();
@@ -72,7 +77,7 @@ public class MapCreator : MonoBehaviour
 	private void CreateLandMatrix()
 	{
 		//some arbitrary values for creating a default level
-		int width = Random.Range(20, 30), length = Random.Range(20, 30), levels = 1;
+		int width = Random.Range((int)mapWidth.x, (int)mapWidth.y), length = Random.Range((int)mapLength.x, (int)mapLength.y), levels = 1;
 
 		for (int i = 0; i < width; i++)
 		{
@@ -82,7 +87,7 @@ public class MapCreator : MonoBehaviour
 				coords[i].Add(new List<Vector2>());
 				for (int k = 0; k < levels; k++)
 				{
-					coords[i][j].Add(Vector2.right * 5f);
+					coords[i][j].Add(Vector2.right * 1);
 				}
 			}
 		}
@@ -91,7 +96,7 @@ public class MapCreator : MonoBehaviour
 	//Modified Perlin Noise method
 	private void RandomiseLandscape(bool includeNext)
 	{
-		int height = 0, variance = 5;
+		int height = 0, variance = 4;
 
 		for (int x = 0; x < coords.Count; x++)
 		{
@@ -107,6 +112,14 @@ public class MapCreator : MonoBehaviour
 				{
 					surrHeights.Add((int)coords[x][z - 1][0].x);
 				}
+				if (x > 0 && z > 0)
+				{
+					surrHeights.Add((int)coords[x - 1][z - 1][0].x);
+				}
+				if (x > 0 && z < coords[x].Count - 1)
+				{
+					surrHeights.Add((int)coords[x - 1][z + 1][0].x);
+				}
 				if (includeNext)
 				{
 					if (x < coords.Count - 1)
@@ -116,6 +129,14 @@ public class MapCreator : MonoBehaviour
 					if (z < coords[x].Count - 1)
 					{
 						surrHeights.Add((int)coords[x][z + 1][0].x);
+					}
+					if (x < coords.Count - 1 && z > 0)
+					{
+						surrHeights.Add((int)coords[x + 1][z - 1][0].x);
+					}
+					if (x < coords.Count - 1 && z < coords[x].Count - 1)
+					{
+						surrHeights.Add((int)coords[x + 1][z + 1][0].x);
 					}
 				}
 
@@ -154,7 +175,7 @@ public class MapCreator : MonoBehaviour
 				for (int k = 0; k < coords[i][j].Count; k++)
 				{
 					//create new tile
-					Tile newTile = Instantiate<Tile>(tilePrefab, transform);
+					Tile newTile = Instantiate<Tile>(tilePrefab, staticHolder);
 					newTile.Init(new Coords(i, j, k), coords[i][j][k]);
 					//store new tile in the tiles nested list
 					tiles[i][j].Add(newTile);
@@ -171,13 +192,71 @@ public class MapCreator : MonoBehaviour
 
 		mapSize.Scale(tilePrefab.Scale);
 
-		StaticBatchingUtility.Combine(gameObject);
+		StaticBatchingUtility.Combine(staticHolder.gameObject);
 	}
 
 	//returns a list of tiles located at (x, z) coordinates
 	public List<Tile> GetTilesAtCoords(int x, int z)
 	{
+		if (x < 0 || x > mapSize.x || z < 0 || z > mapSize.z)
+		{
+			return null;
+		}
 		return tiles[x][z];
+	}
+	public List<Tile> GetTilesAtCoords(Coords coords)
+	{
+		if (coords.x < 0 || coords.x > mapSize.x || coords.z < 0 || coords.z > mapSize.z)
+		{
+			return null;
+		}
+		return tiles[coords.x][coords.z];
+	}
+
+	//get tile at specific coordinates
+	public Tile GetSingleTile(int x, int z, int floor)
+	{
+		List<Tile> tilesAtCoords = GetTilesAtCoords(x, z);
+		if (tilesAtCoords == null || floor > tilesAtCoords.Count)
+		{
+			return null;
+		}
+		return tiles[x][z][floor];
+	}
+	public Tile GetSingleTile(Coords coords)
+	{
+		List<Tile> tilesAtCoords = GetTilesAtCoords(coords.x, coords.z);
+		if (tilesAtCoords == null || coords.floor > tilesAtCoords.Count)
+		{
+			return null;
+		}
+		return tiles[coords.x][coords.z][coords.floor];
+	}
+
+	//if existingList is not null then it will add tiles to that list, otherwise it will return a new list
+	public List<List<Tile>> GetTilesAroundCoords(Coords center, int dist, List<List<Tile>> existingList)
+	{
+		List<List<Tile>> surrTiles = new List<List<Tile>>();
+		if (existingList != null)
+		{
+			surrTiles = existingList;
+		}
+
+		int count = 0;
+		for (int x = -dist; x <= dist; x++)
+		{
+			for (int z = -count; z <= count; z++)
+			{
+				List<Tile> tilesAtCoords = GetTilesAtCoords(center.x + x, center.z + z);
+				if (tilesAtCoords != null && !surrTiles.Contains(tilesAtCoords))
+				{
+					surrTiles.Add(tilesAtCoords);
+				}
+			}
+			count += x >= 0 ? -1 : 1;
+		}
+
+		return surrTiles;
 	}
 }
 
@@ -187,7 +266,7 @@ public struct Coords
 	public int x, z, y, floor;
 
 	//empty coordinates are used for when coordinates are not found or don't exist
-	public Coords Empty
+	public static Coords Empty
 	{
 		get
 		{
@@ -269,8 +348,35 @@ public struct Coords
 		return Empty;
 	}
 
+	public int Distance(Coords other)
+	{
+		return Mathf.Abs(x - other.x) + Mathf.Abs(z - other.z);
+	}
+
 	public override string ToString()
 	{
 		return string.Format("Coordinates: ({0}, {1}, {2})\nFloor: {3}", x, z, y, floor);
+	}
+
+	public bool IsSameXZ(Coords other)
+	{
+		if (x != other.x)
+		{
+			return false;
+		}
+		if (z != other.z)
+		{
+			return false;
+		}
+		return true;
+	}
+
+	public bool IsSameCoord(Coords other)
+	{
+		if (!IsSameXZ(other))
+		{
+			return false;
+		}
+		return floor == other.floor;
 	}
 }
