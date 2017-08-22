@@ -8,57 +8,35 @@ public class Tile : MonoBehaviour
 {
 	/* Fields */
 	#region
-	public int dist;
-	//reference to tile prefab
+	//references to external objects or components
+	private MapCreator map;
 	public Transform tile;
-	//reference to collider
 	private BoxCollider col;
-	//reference to physics material to add to collider
 	public PhysicMaterial mat;
+
 	//coordinates contains x position, z position and floor
 	public Coords coordinates;
-	public int Size
-	{
-		get
-		{
-			return (int)transform.localScale.y;
-		}
-	}
-	public int Offset
-	{
-		get
-		{
-			return (int)transform.position.y;
-		}
-	}
-	public int Height
-	{
-		get
-		{
-			return Offset + Size;
-		}
-  	}
-	public Vector3 Scale
-	{
-		get
-		{
-			return tile.localScale;
-		}
-	}
+
+	//properties of the tile
+	public int Size {get { return (int)transform.localScale.y; }}
+	public int Offset {get { return (int)transform.position.y; }}
+	public int Height {get { return Offset + Size; }}
+	public Vector3 Scale {get { return transform.localScale; }}
 	#endregion
 
 	public void Init(Coords coordinates, Vector2 sizeOffset)
 	{
+		map = MapCreator.map;
 		//adjust properties of the holder
 		this.coordinates = coordinates;
-		if (sizeOffset.x < 0)
+		if (sizeOffset.x <= 0)
 		{
 			sizeOffset.x = 0;
 		}
-		transform.position = new Vector3(this.coordinates.x * tile.localScale.x, sizeOffset.y, this.coordinates.z * tile.localScale.z);
-		transform.localScale = new Vector3(1f, sizeOffset.x, 1f);
-		tile.gameObject.SetActive(sizeOffset.x > 0);
+		transform.position = new Vector3(this.coordinates.x * map.tileScale.x, sizeOffset.y, this.coordinates.z * map.tileScale.z);
+		transform.localScale = new Vector3(map.tileScale.x, map.tileScale.y * sizeOffset.x, map.tileScale.z);
 		this.coordinates.y = Height;
+		tile.gameObject.SetActive(Scale.y > 0f);
 		col = tile.gameObject.AddComponent<BoxCollider>();
 		col.material = mat;
 		col.enabled = false;
@@ -66,7 +44,6 @@ public class Tile : MonoBehaviour
 
 	public void UpdateCollider(Coords coords)
 	{
-		dist = coordinates.Distance(coords);
 		if (coordinates.Distance(coords) > MapCreator.distTrack)
 		{
 			CheckForChars();
@@ -80,7 +57,7 @@ public class Tile : MonoBehaviour
 	private void CheckForChars()
 	{
 		col.enabled = false;
-		foreach (CharController chara in MapCreator.map.existingChars)
+		foreach (CharController chara in map.existingChars)
 		{
 			if (coordinates.Distance(chara.coordinates) <= MapCreator.distTrack)
 			{

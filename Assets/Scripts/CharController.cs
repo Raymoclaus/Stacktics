@@ -4,7 +4,7 @@ using UnityEngine;
 
 public enum CharCtrlMode {FreeMovement, Waiting, AIControlled}
 
-public class CharController : MonoBehaviour
+public abstract class CharController : MonoBehaviour
 {
 	/* Fields */
 	#region
@@ -223,6 +223,10 @@ public class CharController : MonoBehaviour
 					tile.UpdateCollider(updatedCoordinates);
 				}
 			}
+
+			CoordinatesChanged();
 		}
 	}
+
+	public abstract void CoordinatesChanged();
 }

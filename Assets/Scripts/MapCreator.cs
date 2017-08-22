@@ -13,33 +13,22 @@ public class MapCreator : MonoBehaviour
 	public static MapCreator map;
 	public List<CharController> existingChars;
 	public Transform staticHolder, nonStaticHolder;
+	public Transform boundary, invisBoundary, oneSidedBoundary;
 
 	//nested list of coordinates to place tiles. Each Vector2 determines vertical size and vertical offset
 	//coords[horizontal level (x)][z inset][vertical level (y)]
 	private List<List<List<Vector2>>> coords = new List<List<List<Vector2>>>();
 	//references to all the tiles created by this class
 	public List<List<List<Tile>>> tiles = new List<List<List<Tile>>>();
-	//keep record of tile size
-	public Vector3 tileSize
-	{
-		get
-		{
-			return tiles.Count != 0 ? tiles[0][0][0].Scale : Vector3.one;
-		}
-	}
 	//keep track of the size of the map
 	private Vector3 mapSize;
 	//center of the map
-	public Vector3 Center
-	{
-		get
-		{
-			return new Vector3(mapSize.x / 2f, mapSize.y, mapSize.z / 2f);
-		}
-	}
+	public Vector3 Center {get { return new Vector3(mapSize.x / 2f, mapSize.y, mapSize.z / 2f); }}
 	//affects the amount of tiles each charcontroller needs to keep track of
 	public const int distTrack = 2;
 	public Vector2 mapLength, mapWidth;
+	public int perlinVariance;
+	public Vector3 tileScale;
 	#endregion
 
 	void Start()
@@ -96,7 +85,7 @@ public class MapCreator : MonoBehaviour
 	//Modified Perlin Noise method
 	private void RandomiseLandscape(bool includeNext)
 	{
-		int height = 0, variance = 4;
+		int height = 0;
 
 		for (int x = 0; x < coords.Count; x++)
 		{
@@ -148,11 +137,11 @@ public class MapCreator : MonoBehaviour
 						height += surrHeights[i];
 					}
 					height = Mathf.RoundToInt((float)height / (float)surrHeights.Count);
-					height = Random.Range(height - variance, height + variance + 1);
+					height = Random.Range(height - perlinVariance, height + perlinVariance + 1);
 				}
 				else
 				{
-					height = Random.Range(1, variance * 2);
+					height = Random.Range(1, perlinVariance * 2);
 				}
 
 				coords[x][z][0] = Vector2.right * height;
@@ -181,36 +170,59 @@ public class MapCreator : MonoBehaviour
 					tiles[i][j].Add(newTile);
 					count++;
 
-					mapSize.y = k > mapSize.y ? k : mapSize.y;
+					mapSize.y = k + 1 > mapSize.y ? k + 1 : mapSize.y;
 				}
 
-				mapSize.z = j > mapSize.z ? j : mapSize.z;
+				mapSize.z = j + 1 > mapSize.z ? j + 1 : mapSize.z;
 			}
 
-			mapSize.x = i > mapSize.x ? i : mapSize.x;
+			mapSize.x = i + 1 > mapSize.x ? i + 1 : mapSize.x;
 		}
 
-		mapSize.Scale(tilePrefab.Scale);
+		mapSize.Scale(tileScale);
+
+		CreateOutlineBoundaries();
 
 		StaticBatchingUtility.Combine(staticHolder.gameObject);
+	}
+
+	private void CreateOutlineBoundaries()
+	{
+		//create front side
+		Transform side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
+		side.GetChild(0).localEulerAngles += Vector3.up * 180F;
+		side.localScale = new Vector3(mapSize.x, side.localScale.y, side.localScale.z);
+		//create left side
+		side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
+		side.localEulerAngles += Vector3.up * 270f;
+		side.localScale = new Vector3(mapSize.z, side.localScale.y, side.localScale.z);
+		//create back side
+		side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
+		side.position += Vector3.forward * mapSize.z;
+		side.localScale = new Vector3(mapSize.x, side.localScale.y, side.localScale.z);
+		//create right side
+		side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
+		side.position += Vector3.forward * mapSize.z + Vector3.right * mapSize.x;
+		side.localScale = new Vector3(mapSize.z, side.localScale.y, side.localScale.z);
+		side.localEulerAngles += Vector3.up * 90f;
 	}
 
 	//returns a list of tiles located at (x, z) coordinates
 	public List<Tile> GetTilesAtCoords(int x, int z)
 	{
-		if (x < 0 || x > mapSize.x || z < 0 || z > mapSize.z)
+		if (x < 0 || x >= coords.Count || z < 0 || z >= coords[x].Count)
 		{
 			return null;
 		}
 		return tiles[x][z];
 	}
-	public List<Tile> GetTilesAtCoords(Coords coords)
+	public List<Tile> GetTilesAtCoords(Coords coordinates)
 	{
-		if (coords.x < 0 || coords.x > mapSize.x || coords.z < 0 || coords.z > mapSize.z)
+		if (coordinates.x < 0 || coordinates.x >= coords.Count || coordinates.z < 0 || coordinates.z >= coords[coordinates.x].Count)
 		{
 			return null;
 		}
-		return tiles[coords.x][coords.z];
+		return tiles[coordinates.x][coordinates.z];
 	}
 
 	//get tile at specific coordinates
@@ -223,14 +235,14 @@ public class MapCreator : MonoBehaviour
 		}
 		return tiles[x][z][floor];
 	}
-	public Tile GetSingleTile(Coords coords)
+	public Tile GetSingleTile(Coords coordinates)
 	{
-		List<Tile> tilesAtCoords = GetTilesAtCoords(coords.x, coords.z);
-		if (tilesAtCoords == null || coords.floor > tilesAtCoords.Count)
+		List<Tile> tilesAtCoords = GetTilesAtCoords(coordinates.x, coordinates.z);
+		if (tilesAtCoords == null || coordinates.floor > tilesAtCoords.Count)
 		{
 			return null;
 		}
-		return tiles[coords.x][coords.z][coords.floor];
+		return tiles[coordinates.x][coordinates.z][coordinates.floor];
 	}
 
 	//if existingList is not null then it will add tiles to that list, otherwise it will return a new list
@@ -295,13 +307,25 @@ public struct Coords
 	//return Coords based on the position given
 	public Coords(Vector3 pos)
 	{
-		Vector3 size = MapCreator.map.tileSize;
+		//reference to map
+		MapCreator map = MapCreator.map;
+
+		//get scale of tiles
+		Vector3 size = map.tileScale;
 
 		x = (int)(pos.x / size.x);
 		z = (int)(pos.z / size.z);
 		y = 1;
 
-		List<Tile> floors = MapCreator.map.tiles[x][z];
+		//if the given position is out of bounds then return Empty
+		if ((pos.x / size.x) < 0 || (pos.x / size.x) >= map.tiles.Count ||
+			(pos.z / size.z) < 0 || (pos.z / size.z) >= map.tiles[x].Count)
+		{
+			this = Empty;
+			return;
+		}
+
+		List<Tile> floors = map.tiles[x][z];
 
 		int f = 0;
 		for (int i = floors.Count - 1; i >= 0; i--)
@@ -321,7 +345,7 @@ public struct Coords
 	{
 		//grab required variables
 		float charRotation = character.rotation.y;
-		Vector3 size = MapCreator.map.tileSize;
+		Vector3 size = MapCreator.map.tileScale;
 
 		//check if looking forward
 		if (charRotation <= 45f || charRotation >= 315f)
