@@ -59,6 +59,7 @@ public class MapCreator : MonoBehaviour
 		{
 			camCtrl.mapCenter = Center;
 			camCtrl.orthoTarget.position = Center;
+			camCtrl.orthoScrollLimit = new Vector2(mapSize.x / 2f, mapSize.z / 2f);
 			camCtrl.SetMode(CameraMode.OrthoFreeMode);
 		}
 	}

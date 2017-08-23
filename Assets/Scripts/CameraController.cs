@@ -29,8 +29,8 @@ public class CameraController : MonoBehaviour
 	//orthographic-related stuff
 	public enum ScrollMode { EdgeScroll, DragScroll }
 	public ScrollMode scrollMode;
-	public float orthoScrollPadding, orthoScrollLimit;
-	public Vector2 orthoZoomLimits;
+	public float orthoScrollPadding;
+	public Vector2 orthoZoomLimits, orthoScrollLimit;
 	public float zoomSpeed;
 	public bool smoothZooming;
 	private float orthoZoomTo, orthoZoomCount = 0f, orthoZoomTime = 1f;
@@ -42,7 +42,7 @@ public class CameraController : MonoBehaviour
 	private float orthoRotationCount = 0f;
 	private Vector3 prevMouseHoldPos, dragOrigin, targetOrigin;
 	private float dragDistance, dragTime, dragSpeed = 100f;
-	public bool Dragging { get { return dragDistance > 0.05f || dragTime > 1f; } }
+	public bool Dragging {get { return dragDistance > 0.05f || dragTime > 1f; }}
 
 	//perspective-related stuff
 	public float freeMoveSpeed, freeRotateSpeed;
@@ -54,20 +54,11 @@ public class CameraController : MonoBehaviour
 	public Vector2 perspFollowDistanceLimits;
 	private float perspFollowDistanceCount = 0f, perspFollowDistanceTime = 1f;
 	private float transitionToPerspFollowCount = 0f, transitionToPerspFollowTime = 1f;
-	public bool TransitioningToPerspFollow
-	{
-		get
-		{
-			return transitionToPerspFollowCount < transitionToPerspFollowTime;
-		}
-	}
+	public bool TransitioningToPerspFollow {get { return transitionToPerspFollowCount < transitionToPerspFollowTime; }}
 	#endregion
 
 	void Start()
 	{
-		//get references
-		cam = GetComponent<Camera>();
-
 		//variable initialising
 		nearFarClippingLimits.x = cam.nearClipPlane;
 		nearFarClippingLimits.y = cam.farClipPlane;
@@ -231,13 +222,13 @@ public class CameraController : MonoBehaviour
 		orthoTarget.position += direction * cam.orthographicSize / 30f;
 		//keep it within bounds
 		Vector3 distance = orthoTarget.position - mapCenter;
-		if (Mathf.Abs(distance.x) > orthoScrollLimit)
+		if (Mathf.Abs(distance.x) > orthoScrollLimit.x)
 		{
-			orthoTarget.position -= Vector3.right * (Mathf.MoveTowards(distance.x, 0f, orthoScrollLimit));
+			orthoTarget.position -= Vector3.right * (Mathf.MoveTowards(distance.x, 0f, orthoScrollLimit.x));
 		}
-		if (Mathf.Abs(distance.z) > orthoScrollLimit)
+		if (Mathf.Abs(distance.z) > orthoScrollLimit.y)
 		{
-			orthoTarget.position -= Vector3.forward * (Mathf.MoveTowards(distance.z, 0f, orthoScrollLimit));
+			orthoTarget.position -= Vector3.forward * (Mathf.MoveTowards(distance.z, 0f, orthoScrollLimit.y));
 		}
 		Recenter();
 	}
