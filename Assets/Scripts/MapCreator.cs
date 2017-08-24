@@ -17,7 +17,7 @@ public class MapCreator : MonoBehaviour
 
 	//nested list of coordinates to place tiles. Each Vector2 determines vertical size and vertical offset
 	//coords[horizontal level (x)][z inset][vertical level (y)]
-	private List<List<List<Vector2>>> coords = new List<List<List<Vector2>>>();
+	public List<List<List<Vector2>>> coords = new List<List<List<Vector2>>>();
 	//references to all the tiles created by this class
 	public List<List<List<Tile>>> tiles = new List<List<List<Tile>>>();
 	//keep track of the size of the map
@@ -54,10 +54,19 @@ public class MapCreator : MonoBehaviour
 		}
 		//once the coords have been filled out, instantiate copies of the landTile at each coordinate
 		CreateLandTiles();
+
+		//give the camera access to variables such as the map's center position
+		SendDataToCamera();
+	}
+
+	private void SendDataToCamera()
+	{
 		//set the center position of the camera
 		if (camCtrl != null)
 		{
 			camCtrl.mapCenter = Center;
+			camCtrl.orthoTarget = new GameObject().transform;
+			camCtrl.orthoTarget.name = "camOrthoTarget";
 			camCtrl.orthoTarget.position = Center;
 			camCtrl.orthoScrollLimit = new Vector2(mapSize.x / 2f, mapSize.z / 2f);
 			camCtrl.SetMode(CameraMode.OrthoFreeMode);
@@ -192,19 +201,19 @@ public class MapCreator : MonoBehaviour
 		//create front side
 		Transform side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
 		side.GetChild(0).localEulerAngles += Vector3.up * 180F;
-		side.localScale = new Vector3(mapSize.x, side.localScale.y, side.localScale.z);
+		side.localScale = new Vector3(mapSize.x, mapSize.y * 2f, side.localScale.z);
 		//create left side
 		side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
 		side.localEulerAngles += Vector3.up * 270f;
-		side.localScale = new Vector3(mapSize.z, side.localScale.y, side.localScale.z);
+		side.localScale = new Vector3(mapSize.z, mapSize.y * 2f, side.localScale.z);
 		//create back side
 		side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
 		side.position += Vector3.forward * mapSize.z;
-		side.localScale = new Vector3(mapSize.x, side.localScale.y, side.localScale.z);
+		side.localScale = new Vector3(mapSize.x, mapSize.y * 2f, side.localScale.z);
 		//create right side
 		side = Instantiate<Transform>(oneSidedBoundary, staticHolder);
 		side.position += Vector3.forward * mapSize.z + Vector3.right * mapSize.x;
-		side.localScale = new Vector3(mapSize.z, side.localScale.y, side.localScale.z);
+		side.localScale = new Vector3(mapSize.z, mapSize.y * 2f, side.localScale.z);
 		side.localEulerAngles += Vector3.up * 90f;
 	}
 

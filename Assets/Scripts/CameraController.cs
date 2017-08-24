@@ -13,6 +13,7 @@ public class CameraController : MonoBehaviour
 	//reference to components and external objects
 	public Camera cam;
 	public CharController charTarget;
+	[HideInInspector]
 	public Transform orthoTarget;
 	public GameObject crosshair;
 

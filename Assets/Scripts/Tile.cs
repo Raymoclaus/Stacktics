@@ -13,8 +13,7 @@ public class Tile : MonoBehaviour
 	public Transform tile;
 	private BoxCollider col;
 	public PhysicMaterial mat;
-	public MeshFilter meshFil;
-	public MeshRenderer meshRend;
+	public List<GameObject> sides;
 
 	//coordinates contains x position, z position and floor
 	public Coords coordinates;
@@ -37,8 +36,59 @@ public class Tile : MonoBehaviour
 		}
 		transform.position = new Vector3(this.coordinates.x * map.tileScale.x, sizeOffset.y, this.coordinates.z * map.tileScale.z);
 		transform.localScale = new Vector3(map.tileScale.x, map.tileScale.y * sizeOffset.x, map.tileScale.z);
-		this.coordinates.y = Height;
+		this.coordinates.y = Offset;
 		tile.gameObject.SetActive(Scale.y > 0f);
+		DeleteSides();
+	}
+
+	private void DeleteSides()
+	{
+		Coords check = coordinates;
+		//check if front is covered, and destroy side if so
+		if (check.z > 0)
+		{
+			check.z--;
+			CheckAndDestroy(check, sides[4]);
+			check.z++;
+		}
+		//check if left is covered, and destroy side if so
+		if (check.x > 0)
+		{
+			check.x--;
+			CheckAndDestroy(check, sides[3]);
+			check.x++;
+		}
+		//check if back is covered, and destroy side if so
+		if (check.z < map.coords[check.x].Count - 1)
+		{
+			check.z++;
+			CheckAndDestroy(check, sides[2]);
+			check.z--;
+		}
+		//check if right is covered, and destroy side if so
+		if (check.x < map.coords.Count - 1)
+		{
+			check.x++;
+			CheckAndDestroy(check, sides[1]);
+			check.x--;
+		}
+	}
+
+	//Checks the height and offset of adjacent tiles
+	private void CheckAndDestroy(Coords check, GameObject side)
+	{
+		//checks all floors
+		for (int i = 0; i < map.coords[check.x][check.z].Count; i++)
+		{
+			Vector2 coordsCheck = map.coords[check.x][check.z][i];
+			//if the offset is equal or lower AND the adjacent still has a greater height, remove the hidden side
+			if (coordsCheck.y <= Offset && coordsCheck.x + coordsCheck.y >= Height)
+			{
+				sides.Remove(side);
+				DestroyImmediate(side);
+				break;
+			}
+		}
 	}
 
 	public void UpdateCollider(Coords coords)
